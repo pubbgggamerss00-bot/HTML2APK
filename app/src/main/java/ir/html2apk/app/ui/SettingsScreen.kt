@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -115,21 +115,22 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
             )
 
             Spacer(Modifier.height(10.dp))
+            val ksError = ks.error
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 KeyInfoLine(
                     label = "وضعیت",
                     value = if (ks.exists) "کلید ساخته شده و آماده است"
                     else "در اولین بیلد ساخته می‌شود",
                 )
-                if (ks.exists && ks.error == null) {
+                if (ks.exists && ksError == null) {
                     KeyInfoLine(label = "نام کلید", value = ks.alias ?: "—")
                     KeyInfoLine(label = "الگوریتم", value = ks.algorithm ?: "—")
                     KeyInfoLine(label = "اعتبار گواهی", value = ks.validUntil?.let { "تا $it" } ?: "—")
                     KeyInfoLine(label = "SHA-256", value = ks.sha256 ?: "—", mono = true)
                 }
-                if (ks.error != null) {
+                if (ksError != null) {
                     Text(
-                        text = ks.error,
+                        text = ksError,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -140,7 +141,7 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
             OutlinedButton(
                 onClick = vm::regenerateKeystore,
                 modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedButtonDefaults.outlinedButtonColors(
+                colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),
             ) {
