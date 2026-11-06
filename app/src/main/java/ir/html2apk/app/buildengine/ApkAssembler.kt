@@ -68,7 +68,11 @@ object ArscPatcher {
  */
 object ApkAssembler {
 
-    const val ICON_ENTRY_REGEX = "^res/mipmap-(mdpi|hdpi|xhdpi|xxhdpi|xxxhdpi)/ic_launcher\\.png$"
+    // Launcher icon entries of the template, tolerated variants:
+    //   res/mipmap-xxhdpi/ic_launcher.png            (AGP output)
+    //   res/mipmap-xxhdpi-v4/ic_launcher.png         (raw aapt2 link output)
+    const val ICON_ENTRY_REGEX = "^res/mipmap-(mdpi|hdpi|xhdpi|xxhdpi|xxxhdpi)(?:-v\\d+)?/ic_launcher\\.png$"
+    val ICON_ENTRY_PATTERN = Regex(ICON_ENTRY_REGEX)
 
     data class TemplateInfo(
         val entries: LinkedHashMap<String, ByteArray>,
@@ -86,7 +90,7 @@ object ApkAssembler {
                 val name = entry.name
                 if (name.startsWith("META-INF/")) continue
                 entries[name] = zis.readBytes()
-                if (Regex(ICON_ENTRY_REGEX).matches(name)) iconPaths.add(name)
+                if (ICON_ENTRY_PATTERN.matches(name)) iconPaths.add(name)
                 zis.closeEntry()
             }
         }

@@ -13,8 +13,8 @@ import java.io.ByteArrayOutputStream
  */
 object IconProcessor {
 
-    // density folder -> pixel size
-    private val DENSITY_SIZES = listOf(
+    // density name -> pixel size
+    private val DENSITY_SIZES = mapOf(
         "mdpi" to 48,
         "hdpi" to 72,
         "xhdpi" to 96,
@@ -23,7 +23,8 @@ object IconProcessor {
     )
 
     /**
-     * @param templateIconEntryPaths exact entry paths like "res/mipmap-xxhdpi/ic_launcher.png"
+     * @param templateIconEntryPaths exact entry paths taken from the template ZIP listing
+     *        (e.g. "res/mipmap-xxhdpi/ic_launcher.png" or "res/mipmap-xxhdpi-v4/...")
      * @return map of entry path -> PNG bytes
      */
     fun process(
@@ -35,13 +36,13 @@ object IconProcessor {
             ?: throw IllegalArgumentException("فرمت تصویر آیکون پشتیبانی نمی‌شود")
 
         val result = mutableMapOf<String, ByteArray>()
-        for ((density, px) in DENSITY_SIZES) {
-            val entry = templateIconEntryPaths.firstOrNull { it == "res/mipmap-$density/ic_launcher.png" }
-                ?: continue
+        for (path in templateIconEntryPaths) {
+            val m = ApkAssembler.ICON_ENTRY_PATTERN.matchEntire(path) ?: continue
+            val px = DENSITY_SIZES[m.groupValues[1]] ?: continue
             val scaled = Bitmap.createScaledBitmap(square, px, px, true)
             val bos = ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.PNG, 100, bos)
-            result[entry] = bos.toByteArray()
+            result[path] = bos.toByteArray()
         }
         if (result.isEmpty()) {
             throw IllegalArgumentException("قالب هیچ آیکونی برای جایگزینی ندارد")

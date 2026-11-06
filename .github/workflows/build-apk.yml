@@ -27,6 +27,14 @@ jobs:
       - name: Build template APK
         run: ./gradlew :template:assembleRelease --no-daemon --stacktrace
 
+      - name: Verify template icon entry paths (must not be shortened)
+        run: |
+          if unzip -l template/build/outputs/apk/release/template-release-unsigned.apk | grep -E "res/mipmap-(mdpi|hdpi|xhdpi|xxhdpi|xxxhdpi)(-v[0-9]+)?/ic_launcher.png" >/dev/null; then
+            echo "template icon entries intact"
+          else
+            echo "::error::template mipmap paths were shortened (resource optimizations active)"; exit 1
+          fi
+
       - name: Extract binary fixtures & embed template APK
         run: |
           mkdir -p app/src/main/assets app/src/test/resources
