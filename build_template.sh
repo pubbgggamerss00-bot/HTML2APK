@@ -17,6 +17,8 @@ if [ ! -f "$SRC" ]; then
   exit 1
 fi
 
-mkdir -p app/src/main/assets
+mkdir -p app/src/main/assets app/src/test/resources
 cp "$SRC" app/src/main/assets/template.apk
+# fixture for the JVM end-to-end engine test (EngineEndToEndTest)
+cp "$SRC" app/src/test/resources/real_template.apk
 echo "template.apk embedded: $(du -h app/src/main/assets/template.apk | cut -f1)"

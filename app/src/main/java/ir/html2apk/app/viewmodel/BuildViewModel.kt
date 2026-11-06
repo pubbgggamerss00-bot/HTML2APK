@@ -80,6 +80,18 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
     // ---------------- build control ----------------
 
     fun startBuild() {
+        // The whole synchronous section is guarded — no input, however malformed,
+        // can take the app down before the build coroutine even starts.
+        try {
+            startBuildInternal()
+        } catch (ce: kotlinx.coroutines.CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            recordFatal(t)
+        }
+    }
+
+    private fun startBuildInternal() {
         val current = _state.value
         if (current.phase == Phase.RUNNING) return
 
@@ -162,17 +174,46 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
                         logs = it.logs + LogLine(System.currentTimeMillis(), LogType.ERROR, "ساخت لغو شد")
                     )
                 }
-            } catch (e: Exception) {
-                val message = e.message ?: "خطای ناشناخته"
-                _state.update {
-                    it.copy(
-                        phase = Phase.FAILED,
-                        currentStage = -1,
-                        error = message,
-                        logs = it.logs + LogLine(System.currentTimeMillis(), LogType.ERROR, "خطا: $message")
-                    )
-                }
+            } catch (t: Throwable) {
+                // catching Throwable (not just Exception) is deliberate: OutOfMemoryError,
+                // NoClassDefFoundError & friends would otherwise kill the whole process —
+                // the reported “app crashes when pressing build”. Any failure is now
+                // surfaced as a readable terminal error instead.
+                recordFatal(t)
             }
+        }
+    }
+
+    /**
+     * Turns ANY build failure — including Error-level ones — into a FAILED state with
+     * the exception class + first stack frames printed into the terminal log, so the
+     * user always sees what went wrong instead of the app silently dying.
+     */
+    private fun recordFatal(t: Throwable) {
+        val message = t.message?.take(300) ?: t.javaClass.simpleName
+        val stamped = System.currentTimeMillis()
+        val fatalLines = buildList {
+            add(LogLine(stamped, LogType.ERROR, "خطا: $message"))
+            add(LogLine(stamped, LogType.ERROR, "نوع استثنا: ${t.javaClass.name}"))
+            t.stackTrace.take(8).forEach { frame ->
+                add(LogLine(stamped, LogType.ERROR, "    at $frame"))
+            }
+            t.cause?.let { c ->
+                add(
+                    LogLine(
+                        stamped, LogType.ERROR,
+                        "علت: ${c.javaClass.simpleName}: ${c.message?.take(200)}"
+                    )
+                )
+            }
+        }
+        _state.update {
+            it.copy(
+                phase = Phase.FAILED,
+                currentStage = -1,
+                error = "ساخت ناموفق بود: $message",
+                logs = it.logs + fatalLines,
+            )
         }
     }
 

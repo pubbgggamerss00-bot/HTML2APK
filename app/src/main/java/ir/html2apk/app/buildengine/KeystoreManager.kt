@@ -41,10 +41,14 @@ object KeystoreManager {
 
     fun keystoreExists(context: Context): Boolean = ksFile(context).exists()
 
-    fun getOrCreate(context: Context, password: String, alias: String): SigningKey {
+    fun getOrCreate(context: Context, password: String, alias: String): SigningKey =
+        getOrCreate(context.filesDir, password, alias)
+
+    /** Context-free variant (used by the JVM end-to-end test). */
+    fun getOrCreate(ksDir: File, password: String, alias: String): SigningKey {
         registerBouncyCastle()
         val pass = (password.ifBlank { DEFAULT_PASSWORD }).toCharArray()
-        val file = ksFile(context)
+        val file = File(ksDir, KS_FILE_NAME)
         val requestedAlias = alias.ifBlank { DEFAULT_ALIAS }.lowercase()
 
         if (file.exists()) {

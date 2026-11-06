@@ -14,3 +14,5 @@ app/src/main/assets/template.apk
 # real binary fixtures extracted by CI for unit tests
 app/src/test/resources/real_template_manifest.bin
 app/src/test/resources/real_resources_arsc.bin
+# template apk fixture for the JVM e2e engine test
+app/src/test/resources/real_template.apk

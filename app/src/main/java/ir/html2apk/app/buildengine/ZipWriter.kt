@@ -1,6 +1,7 @@
 package ir.html2apk.app.buildengine
 
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.OutputStream
 import java.util.zip.CRC32
 
@@ -25,14 +26,67 @@ class ApkZipWriter(private val out: OutputStream) {
     private var bytesWritten = 0L
 
     fun putEntry(name: String, data: ByteArray) {
-        val nameBytes = name.toByteArray(Charsets.UTF_8)
-        require(nameBytes.size <= 255) { "zip entry name too long: $name" }
-        require(nameBytes.isNotEmpty()) { "zip entry name must not be empty" }
+        val nameBytes = prepareEntryName(name)
 
         val crc = CRC32()
         crc.update(data)
         val crcValue = crc.value
 
+        val localOffset = writeLocalHeader(nameBytes, crcValue, data.size)
+        out.write(data)
+        bytesWritten += 30L + nameBytes.size + extraLenOfLast + data.size
+        records.add(Record(nameBytes, crcValue, data.size, localOffset, extraLenOfLast))
+    }
+
+    /**
+     * STORED entry streamed straight from a file — never loads the whole content in RAM.
+     * Two passes over the file: pass 1 computes CRC + size (needed *before* the local
+     * header in a STORED, descriptor-less entry), pass 2 streams the bytes out.
+     */
+    fun putEntryFile(name: String, file: File) {
+        val nameBytes = prepareEntryName(name)
+        require(file.isFile) { "entry source is not a file: $file" }
+        require(file.length() <= Int.MAX_VALUE) { "entry too large for a single APK entry: $file" }
+
+        // pass 1 — CRC + size
+        val crc = CRC32()
+        file.inputStream().buffered().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val r = input.read(buf)
+                if (r <= 0) break
+                crc.update(buf, 0, r)
+            }
+        }
+        val crcValue = crc.value
+        val size = file.length().toInt()
+
+        val localOffset = writeLocalHeader(nameBytes, crcValue, size)
+
+        // pass 2 — stream data
+        file.inputStream().buffered().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val r = input.read(buf)
+                if (r <= 0) break
+                out.write(buf, 0, r)
+            }
+        }
+        bytesWritten += 30L + nameBytes.size + extraLenOfLast + size
+        records.add(Record(nameBytes, crcValue, size, localOffset, extraLenOfLast))
+    }
+
+    private fun prepareEntryName(name: String): ByteArray {
+        val nameBytes = name.toByteArray(Charsets.UTF_8)
+        require(nameBytes.size <= 255) { "zip entry name too long: $name" }
+        require(nameBytes.isNotEmpty()) { "zip entry name must not be empty" }
+        return nameBytes
+    }
+
+    private var extraLenOfLast: Int = 0
+
+    /** Writes the local file header + alignment padding; returns the entry's local offset. */
+    private fun writeLocalHeader(nameBytes: ByteArray, crcValue: Long, size: Int): Long {
         val base = bytesWritten + 30 + nameBytes.size
         var extraLen = 0
         var pad = 0
@@ -42,6 +96,7 @@ class ApkZipWriter(private val out: OutputStream) {
         }
         val dataStart = base + extraLen
         check(dataStart % 4 == 0L) { "alignment calculation failed" }
+        extraLenOfLast = extraLen
 
         val localOffset = bytesWritten
 
@@ -53,8 +108,8 @@ class ApkZipWriter(private val out: OutputStream) {
         header.write(le16(DOS_TIME))
         header.write(le16(DOS_DATE))
         header.write(le32(crcValue.toInt()))
-        header.write(le32(data.size))   // compressed size
-        header.write(le32(data.size))   // uncompressed size
+        header.write(le32(size))        // compressed size
+        header.write(le32(size))        // uncompressed size
         header.write(le16(nameBytes.size))
         header.write(le16(extraLen))
         out.write(header.toByteArray())
@@ -69,16 +124,18 @@ class ApkZipWriter(private val out: OutputStream) {
             extra[3] = ((pad shr 8) and 0xFF).toByte()
             out.write(extra)
         }
-
-        out.write(data)
-        bytesWritten += 30L + nameBytes.size + extraLen + data.size
-
-        records.add(Record(nameBytes, crcValue, data.size, localOffset, extraLen))
+        return localOffset
     }
 
     fun finish() {
         val cdStart = bytesWritten
+        var cdSize = 0L
         for (r in records) {
+            // NOTE: bytesWritten is intentionally not touched here (it tracks the
+            // local-header region); the CD size is counted explicitly, because the
+            // EOCD below must declare it correctly — a wrong value makes apksig
+            // (and the whole platform) reject the APK as a malformed ZIP.
+            cdSize += 46L + r.name.size + r.extraLen
             val cd = ByteArrayOutputStream(46)
             cd.write(le32(0x02014B50))  // central directory signature
             cd.write(le16(20))          // version made by
@@ -109,7 +166,6 @@ class ApkZipWriter(private val out: OutputStream) {
                 out.write(extra)
             }
         }
-        val cdSize = bytesWritten - cdStart
 
         val eocd = ByteArrayOutputStream(22)
         eocd.write(le32(0x06054B50))

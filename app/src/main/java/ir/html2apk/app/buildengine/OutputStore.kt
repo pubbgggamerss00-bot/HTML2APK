@@ -33,7 +33,12 @@ object OutputStore {
         return if (cleaned.isBlank()) "app.apk" else cleaned
     }
 
-    fun saveApk(context: Context, apk: ByteArray, suggestedName: String): SavedOutput {
+    /**
+     * Streams the built APK from [apkFile] into MediaStore (Downloads, Android 10+)
+     * or app-specific external storage (Android 8/9). Never loads the APK fully in RAM.
+     */
+    fun saveApk(context: Context, apkFile: File, suggestedName: String): SavedOutput {
+        require(apkFile.isFile && apkFile.length() > 0) { "APK تولیدشده خالی است" }
         val safeName = sanitizeFileName(suggestedName)
 
         if (Build.VERSION.SDK_INT >= 29) {
@@ -47,22 +52,28 @@ object OutputStore {
             val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             val itemUri = resolver.insert(collection, values)
                 ?: throw IOException("ثبت فایل خروجی در Downloads ناموفق بود")
-            resolver.openOutputStream(itemUri)?.use { it.write(apk) }
-                ?: throw IOException("نوشتن فایل خروجی ناموفق بود")
+            try {
+                resolver.openOutputStream(itemUri)?.use { out ->
+                    apkFile.inputStream().buffered(256 * 1024).use { it.copyTo(out) }
+                } ?: throw IOException("نوشتن فایل خروجی ناموفق بود")
+            } catch (e: Exception) {
+                runCatching { resolver.delete(itemUri, null, null) }
+                throw e
+            }
             val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
             resolver.update(itemUri, done, null, null)
-            return SavedOutput(itemUri, safeName, apk.size.toLong(), inMediaStore = true, localFile = null)
+            return SavedOutput(itemUri, safeName, apkFile.length(), inMediaStore = true, localFile = null)
         }
 
         // Android 8/9: app-specific external directory (no permission required)
         val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "Download")
         dir.mkdirs()
         val file = File(dir, safeName)
-        file.writeBytes(apk)
+        apkFile.copyTo(file, overwrite = true)
         return SavedOutput(
             uri = Uri.fromFile(file),
             displayName = safeName,
-            sizeBytes = apk.size.toLong(),
+            sizeBytes = file.length(),
             inMediaStore = false,
             localFile = file,
         )

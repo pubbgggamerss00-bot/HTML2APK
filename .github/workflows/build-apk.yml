@@ -42,6 +42,8 @@ jobs:
           cp /tmp/tmplfix/AndroidManifest.xml app/src/test/resources/real_template_manifest.bin
           cp /tmp/tmplfix/resources.arsc app/src/test/resources/real_resources_arsc.bin
           cp template/build/outputs/apk/release/template-release-unsigned.apk app/src/main/assets/template.apk
+          # fixture for the JVM end-to-end engine test (EngineEndToEndTest)
+          cp template/build/outputs/apk/release/template-release-unsigned.apk app/src/test/resources/real_template.apk
 
       - name: Run unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace

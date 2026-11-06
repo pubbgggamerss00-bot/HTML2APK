@@ -1,8 +1,9 @@
 package ir.html2apk.app.buildengine
 
+import java.io.BufferedOutputStream
 import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -100,22 +101,28 @@ object ApkAssembler {
     }
 
     data class AssembleResult(
-        val bytes: ByteArray,
+        val file: File,
         val entryCount: Int,
         val totalBytes: Long,
     )
 
+    /**
+     * Streams the rebuilt APK into [outputFile] — no full-size in-memory copies, so
+     * arbitrarily large web inputs (up to the engine limits) can never OOM the app.
+     */
     fun assemble(
         template: TemplateInfo,
         manifestBytes: ByteArray,
         arscBytes: ByteArray,
         iconReplacements: Map<String, ByteArray>,
         webRoot: File,
+        outputFile: File,
     ): AssembleResult {
-        val out = ByteArrayOutputStream((template.entries.values.sumOf { it.size } + 1) shl 16)
         var entryCount = 0
 
-        ApkZipWriter(out).let { writer ->
+        FileOutputStream(outputFile).use { fos ->
+            val writer = ApkZipWriter(BufferedOutputStream(fos, 256 * 1024))
+
             // 1) patched manifest
             writer.putEntry("AndroidManifest.xml", manifestBytes)
             entryCount++
@@ -138,11 +145,12 @@ object ApkAssembler {
             }
 
             // 4) user's web content under assets/ (index.html replaces the placeholder)
+            //    streamed file-by-file (two-pass per file, constant memory)
             val files = webRoot.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(webRoot).path }
             var added = 0
             for (f in files) {
                 val rel = f.relativeTo(webRoot).invariantSeparatorsPath
-                writer.putEntry("assets/$rel", f.readBytes())
+                writer.putEntryFile("assets/$rel", f)
                 added++
                 entryCount++
             }
@@ -151,7 +159,6 @@ object ApkAssembler {
             writer.finish()
         }
 
-        val bytes = out.toByteArray()
-        return AssembleResult(bytes, entryCount, bytes.size.toLong())
+        return AssembleResult(outputFile, entryCount, outputFile.length())
     }
 }

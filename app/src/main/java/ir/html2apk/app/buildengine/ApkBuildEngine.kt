@@ -6,9 +6,10 @@ import ir.html2apk.app.model.BuildStage
 import ir.html2apk.app.model.LogType
 import ir.html2apk.app.model.Orientation
 import kotlinx.coroutines.ensureActive
-import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
 import kotlin.coroutines.coroutineContext
 
 /** Progress callbacks delivered (possibly) from a background thread. */
@@ -22,13 +23,24 @@ interface BuildSink {
  * The offline HTML/ZIP → signed-APK build engine.
  *
  * Stage pipeline:
- *  0. PREPARE    — copy input, extract ZIP (Zip-Slip hardened), locate index.html
+ *  0. PREPARE    — stream input to a temp file, extract ZIP (Zip-Slip hardened), locate index.html
  *  1. RESOURCES  — decode template APK, process the optional launcher icon
- *  2. ASSEMBLE   — patch binary manifest + resources.arsc, rebuild a STORED+aligned ZIP
- *  3. SIGN       — load/create keystore, sign with v1+v2+v3 (apksig)
- *  4. SAVE       — publish through MediaStore (Downloads) or app-specific storage
+ *  2. ASSEMBLE   — patch binary manifest + resources.arsc, rebuild a STORED+aligned ZIP (streamed)
+ *  3. SIGN       — load/create keystore, sign with v1+v2+v3 (apksig, file-to-file)
+ *  4. SAVE       — publish through MediaStore (Downloads) or app-specific storage (streamed)
+ *
+ * Memory policy: the user's web content is never held fully in RAM. Every large
+ * transfer (input copy, ZIP extraction, APK assembly, signing, saving) is a stream —
+ * peak heap stays constant no matter how big the input is. This is what keeps the
+ * builder from being killed (OOM crash) on devices with a small heap.
  */
 class ApkBuildEngine(private val context: Context) {
+
+    companion object {
+        /** Hard cap for the *input* file. Mirrors ZipUtils total cap for archives. */
+        const val MAX_INPUT_BYTES: Long = 200L * 1024 * 1024
+        private const val COPY_BUF = 64 * 1024
+    }
 
     suspend fun build(request: BuildRequest, sink: BuildSink): OutputStore.SavedOutput {
         val tempRoot = File(context.cacheDir, "html2apk-build-${System.currentTimeMillis()}")
@@ -41,15 +53,14 @@ class ApkBuildEngine(private val context: Context) {
             val t0 = System.currentTimeMillis()
             sink.log(LogType.CMD, "mkdir ${tempRoot.name}")
 
-            val inputBytes = context.contentResolver.openInputStream(request.inputUri)?.use {
-                it.readBytes()
-            } ?: throw IOException("خواندن فایل ورودی ناموفق بود")
-            sink.log(LogType.INFO, "input: ${request.inputName} (${formatSize(inputBytes.size)})")
+            val inputFile = File(tempRoot, "input.bin")
+            copyInputBounded(context.contentResolver.openInputStream(request.inputUri), inputFile)
+            sink.log(LogType.INFO, "input: ${request.inputName} (${formatSize(inputFile.length())})")
 
             val webRoot: File = if (request.isZip) {
                 sink.log(LogType.CMD, "unzip \"${request.inputName}\" -> web/")
-                val files = ZipUtils.extract(ByteArrayInputStream(inputBytes), stagingAssets)
-                sink.log(LogType.INFO, "${files.size} فایل استخراج شد (${formatSize(inputBytes.size)})")
+                val files = inputFile.inputStream().use { ZipUtils.extract(it, stagingAssets) }
+                sink.log(LogType.INFO, "${files.size} فایل استخراج شد (${formatSize(inputFile.length())})")
                 val root = ZipUtils.findRootWithIndexHtml(stagingAssets)
                     ?: throw IllegalArgumentException(
                         "فایل index.html در ریشهٔ ZIP پیدا نشد (یا در یک پوشهٔ تکی قرار نگرفت)"
@@ -57,8 +68,9 @@ class ApkBuildEngine(private val context: Context) {
                 sink.log(LogType.OK, "index.html found: ${root.relativeTo(tempRoot).path}/index.html")
                 root
             } else {
-                File(stagingAssets, "index.html").writeBytes(inputBytes)
-                sink.log(LogType.OK, "index.html آماده شد (${formatSize(inputBytes.size)})")
+                val asIndex = File(stagingAssets, "index.html")
+                inputFile.copyTo(asIndex, overwrite = true)
+                sink.log(LogType.OK, "index.html آماده شد (${formatSize(asIndex.length())})")
                 stagingAssets
             }
             coroutineContext.ensureActive()
@@ -121,7 +133,10 @@ class ApkBuildEngine(private val context: Context) {
 
             coroutineContext.ensureActive()
             sink.log(LogType.CMD, "zip -r -X -0 (STORED) + zipalign 4")
-            val assembled = ApkAssembler.assemble(template, manifestBytes, arscBytes, iconReplacements, webRoot)
+            val assembledFile = File(tempRoot, "assembled.apk")
+            val assembled = ApkAssembler.assemble(
+                template, manifestBytes, arscBytes, iconReplacements, webRoot, assembledFile
+            )
             sink.log(
                 LogType.OK,
                 "${assembled.entryCount} entries STORED & 4-byte aligned (${formatSize(assembled.totalBytes)})"
@@ -142,7 +157,8 @@ class ApkBuildEngine(private val context: Context) {
                 }
             )
             sink.log(LogType.CMD, "apksigner sign --v1 --v2 --v3")
-            val signed = ApkSignUtil.sign(assembled.bytes, key)
+            val signedFile = File(tempRoot, "signed.apk")
+            ApkSignUtil.sign(assembledFile, signedFile, key)
             sink.log(LogType.OK, "signed: v1 + v2 + v3 (SHA-256: ${key.sha256Fingerprint.take(23)}…)")
             sink.onStageEnd(BuildStage.SIGN, System.currentTimeMillis() - t3)
 
@@ -153,7 +169,7 @@ class ApkBuildEngine(private val context: Context) {
             val outputName = OutputStore.sanitizeFileName(
                 "${request.appName}-v${request.versionName}.apk"
             )
-            val saved = OutputStore.saveApk(context, signed, outputName)
+            val saved = OutputStore.saveApk(context, signedFile, outputName)
             sink.log(
                 LogType.OK,
                 if (saved.inMediaStore) "saved -> Downloads/${saved.displayName}"
@@ -167,7 +183,34 @@ class ApkBuildEngine(private val context: Context) {
         }
     }
 
-    private fun formatSize(bytes: Int): String = formatSize(bytes.toLong())
+    /**
+     * Streams the input from the SAF [InputStream] into [target], enforcing a size cap.
+     * Streaming (instead of readBytes) keeps peak memory constant — a big input would
+     * otherwise raise OutOfMemoryError and hard-crash the app (an Error, not Exception).
+     */
+    private fun copyInputBounded(input: InputStream?, target: File) {
+        if (input == null) throw IOException("خواندن فایل ورودی ناموفق بود — فایل دوباره انتخاب شود")
+        try {
+            var total = 0L
+            FileOutputStream(target).use { out ->
+                val buf = ByteArray(COPY_BUF)
+                while (true) {
+                    val r = input.read(buf)
+                    if (r <= 0) break
+                    total += r
+                    if (total > MAX_INPUT_BYTES) {
+                        throw IOException(
+                            "حجم فایل ورودی بیش از حد مجاز است (سقف ${formatSize(MAX_INPUT_BYTES)})"
+                        )
+                    }
+                    out.write(buf, 0, r)
+                }
+            }
+            if (total == 0L) throw IOException("فایل ورودی خالی است")
+        } finally {
+            input.close()
+        }
+    }
 
     private fun formatSize(bytes: Long): String = when {
         bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1024.0 / 1024.0)
