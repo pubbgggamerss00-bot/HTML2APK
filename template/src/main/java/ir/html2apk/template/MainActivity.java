@@ -38,7 +38,7 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         // Never grant universal cross-file access to file:// pages (security).
         s.setAllowUniversalAccessFromFileURLs(false);
-        s.setLoadsWithOverviewMode(true);
+        s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setLoadsImagesAutomatically(true);
         s.setMediaPlaybackRequiresUserGesture(false);
