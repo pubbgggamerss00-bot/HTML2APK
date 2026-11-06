@@ -84,38 +84,6 @@ class AXmlEditorTest {
         }
     }
 
-    private fun le16(v: Int): ByteArray =
-        byteArrayOf((v and 0xFF).toByte(), ((v shr 8) and 0xFF).toByte())
-
-    private fun le32(v: Int): ByteArray = byteArrayOf(
-        (v and 0xFF).toByte(),
-        ((v shr 8) and 0xFF).toByte(),
-        ((v shr 16) and 0xFF).toByte(),
-        ((v shr 24) and 0xFF).toByte(),
-    )
-
-    private fun nodeHeader(type: Int, size: Int): ByteArray {
-        val out = ByteArrayOutputStream()
-        out.write(le16(type))
-        out.write(le16(if (type == 0x0102) 36 else 24))
-        out.write(le32(size))
-        out.write(le32(0))   // line
-        out.write(le32(-1))  // comment
-        return out.toByteArray()
-    }
-
-    private fun attr(nsIdx: Int, nameIdx: Int, rawIdx: Int, type: Int, data: Int): ByteArray {
-        val out = ByteArrayOutputStream(20)
-        out.write(le32(nsIdx))
-        out.write(le32(nameIdx))
-        out.write(le32(rawIdx))
-        out.write(le16(8))          // Res_value.size
-        out.write(0)                // res0
-        out.write(type)
-        out.write(le32(data))
-        return out.toByteArray()
-    }
-
     /** Builds a compiled manifest mirroring the template module's source manifest. */
     private fun buildFixture(): ByteArray {
         val f = Fixture()
@@ -415,4 +383,36 @@ class AXmlEditorTest {
         }
         assertEquals("com.example.real", sb.toString())
     }
+}
+
+private fun le16(v: Int): ByteArray =
+    byteArrayOf((v and 0xFF).toByte(), ((v shr 8) and 0xFF).toByte())
+
+private fun le32(v: Int): ByteArray = byteArrayOf(
+    (v and 0xFF).toByte(),
+    ((v shr 8) and 0xFF).toByte(),
+    ((v shr 16) and 0xFF).toByte(),
+    ((v shr 24) and 0xFF).toByte(),
+)
+
+private fun nodeHeader(type: Int, size: Int): ByteArray {
+    val out = ByteArrayOutputStream()
+    out.write(le16(type))
+    out.write(le16(if (type == 0x0102) 36 else 24))
+    out.write(le32(size))
+    out.write(le32(0))   // line
+    out.write(le32(-1))  // comment
+    return out.toByteArray()
+}
+
+private fun attr(nsIdx: Int, nameIdx: Int, rawIdx: Int, type: Int, data: Int): ByteArray {
+    val out = ByteArrayOutputStream(20)
+    out.write(le32(nsIdx))
+    out.write(le32(nameIdx))
+    out.write(le32(rawIdx))
+    out.write(le16(8))          // Res_value.size
+    out.write(0)                // res0
+    out.write(type)
+    out.write(le32(data))
+    return out.toByteArray()
 }
