@@ -12,8 +12,10 @@ import java.util.zip.ZipInputStream
 /**
  * Patches the package name inside `resources.arsc` in place.
  *
- * The table header is followed by a ResTable_package chunk whose `name` field is a
- * fixed-size char16[128] array — overwriting it never shifts any other structure.
+ * The ResTable_package chunk's `name` field is a fixed-size char16[128] array —
+ * overwriting it never shifts any other structure. The package chunk is located by
+ * walking the chunk chain after the table header (modern aapt2 emits a global
+ * string pool chunk between the table header and the first package chunk).
  */
 object ArscPatcher {
 
@@ -24,10 +26,23 @@ object ArscPatcher {
         val tableType = buf.getShort(0).toInt() and 0xFFFF
         require(tableType == 0x0002) { "invalid resources.arsc (type=0x%04X)".format(tableType) }
         val headerSize = buf.getShort(2).toInt() and 0xFFFF
+        val tableSize = buf.getInt(4)
+        require(tableSize <= out.size) { "resources.arsc size field out of bounds" }
 
-        val pkgStart = headerSize
-        val pkgType = buf.getShort(pkgStart).toInt() and 0xFFFF
-        require(pkgType == 0x0200) { "unexpected resources.arsc layout (no package chunk)" }
+        // walk chunks after the table header looking for ResTable_package (0x0200)
+        var pkgStart = -1
+        var pos = headerSize
+        while (pos + 8 <= tableSize) {
+            val type = buf.getShort(pos).toInt() and 0xFFFF
+            val chunkSize = buf.getInt(pos + 4)
+            if (chunkSize <= 0 || pos + chunkSize > tableSize) break
+            if (type == 0x0200) {
+                pkgStart = pos
+                break
+            }
+            pos += chunkSize
+        }
+        require(pkgStart != -1) { "unexpected resources.arsc layout (no package chunk)" }
 
         // ResTable_package: header(8) + id(4) + name char16[128] (256 bytes)
         val nameStart = pkgStart + 12

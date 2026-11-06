@@ -124,8 +124,17 @@ class ZipUtilsTest {
 
     @Test
     fun `returns null when index missing`() {
-        val bytes = zipOf(mapOf("a.html" to "<p/>", "b/index.html" to "<p/>"))
+        // no index.html at root, two top-level folders (no single-folder root candidate)
+        val bytes = zipOf(mapOf("a.html" to "<p/>", "b/index.html" to "<p/>", "c/index.html" to "<p/>"))
         val dir = tmp.newFolder("root3")
+        ZipUtils.extract(ByteArrayInputStream(bytes), dir)
+        assertNull(ZipUtils.findRootWithIndexHtml(dir))
+    }
+
+    @Test
+    fun `returns null when only loose files`() {
+        val bytes = zipOf(mapOf("page.html" to "<p/>", "app.js" to ""))
+        val dir = tmp.newFolder("root4")
         ZipUtils.extract(ByteArrayInputStream(bytes), dir)
         assertNull(ZipUtils.findRootWithIndexHtml(dir))
     }

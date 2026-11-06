@@ -371,10 +371,24 @@ class AXmlEditorTest {
         val patched = ArscPatcher.patchPackageName(bytes, "com.example.real")
         assertEquals(bytes.size, patched.size)
 
-        // read the name back
+        // read the name back: locate the ResTable_package chunk by walking the chain
         val bb = java.nio.ByteBuffer.wrap(patched).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         val headerSize = bb.getShort(2).toInt() and 0xFFFF
-        val nameStart = headerSize + 12
+        val tableSize = bb.getInt(4)
+        var pkgStart = -1
+        var pos = headerSize
+        while (pos + 8 <= tableSize) {
+            val type = bb.getShort(pos).toInt() and 0xFFFF
+            val chunkSize = bb.getInt(pos + 4)
+            if (chunkSize <= 0 || pos + chunkSize > tableSize) break
+            if (type == 0x0200) {
+                pkgStart = pos
+                break
+            }
+            pos += chunkSize
+        }
+        assertTrue("package chunk found", pkgStart != -1)
+        val nameStart = pkgStart + 12
         val sb = StringBuilder()
         for (i in 0 until 128) {
             val c = bb.getChar(nameStart + i * 2)

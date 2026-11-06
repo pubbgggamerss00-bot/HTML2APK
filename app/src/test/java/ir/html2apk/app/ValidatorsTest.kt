@@ -51,8 +51,14 @@ class ValidatorsTest {
     }
 
     @Test
-    fun `uppercase characters are invalid`() {
-        assertFalse(validate("Com.Example.App".trim().lowercase() + "A").isValid)
+    fun `non-latin letters are invalid`() {
+        assertFalse(validate("com.exämple.app").isValid)
+        assertFalse(validate("com.مثال.app").isValid)
+    }
+
+    @Test
+    fun `digits-only segment start is invalid`() {
+        assertFalse(validate("com.2app.app").isValid)
     }
 
     @Test
