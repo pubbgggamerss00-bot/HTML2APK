@@ -42,32 +42,41 @@ object OutputStore {
         val safeName = sanitizeFileName(suggestedName)
 
         if (Build.VERSION.SDK_INT >= 29) {
-            val resolver = context.contentResolver
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
-                put(MediaStore.MediaColumns.MIME_TYPE, APK_MIME)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Download")
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            val itemUri = resolver.insert(collection, values)
-                ?: throw IOException("ثبت فایل خروجی در Downloads ناموفق بود")
             try {
-                resolver.openOutputStream(itemUri)?.use { out ->
-                    apkFile.inputStream().buffered(256 * 1024).use { it.copyTo(out) }
-                } ?: throw IOException("نوشتن فایل خروجی ناموفق بود")
-            } catch (e: Exception) {
-                runCatching { resolver.delete(itemUri, null, null) }
-                throw e
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, APK_MIME)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val itemUri = resolver.insert(collection, values)
+                    ?: throw IOException("ثبت فایل خروجی در Downloads ناموفق بود")
+                try {
+                    resolver.openOutputStream(itemUri)?.use { out ->
+                        apkFile.inputStream().buffered(256 * 1024).use { it.copyTo(out) }
+                    } ?: throw IOException("نوشتن فایل خروجی ناموفق بود")
+                } catch (e: Exception) {
+                    runCatching { resolver.delete(itemUri, null, null) }
+                    throw e
+                }
+                val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                resolver.update(itemUri, done, null, null)
+                return SavedOutput(itemUri, safeName, apkFile.length(), inMediaStore = true, localFile = null)
+            } catch (_: Exception) {
+                // Some OEMs / work profiles / restricted profiles reject MediaStore
+                // Downloads inserts. Fall through to the app-private path so the
+                // user still gets a usable APK (install/share still work via FileProvider).
             }
-            val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
-            resolver.update(itemUri, done, null, null)
-            return SavedOutput(itemUri, safeName, apkFile.length(), inMediaStore = true, localFile = null)
         }
 
-        // Android 8/9: app-specific external directory (no permission required)
+        // Android 8/9 or MediaStore fallback: app-specific external directory
+        // (no storage permission required on modern Android).
         val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "Download")
-        dir.mkdirs()
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw IOException("ساخت پوشهٔ خروجی ناموفق بود: ${dir.absolutePath}")
+        }
         val file = File(dir, safeName)
         apkFile.copyTo(file, overwrite = true)
         return SavedOutput(

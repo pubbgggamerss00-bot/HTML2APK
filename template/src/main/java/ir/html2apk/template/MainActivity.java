@@ -38,12 +38,20 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         // Never grant universal cross-file access to file:// pages (security).
         s.setAllowUniversalAccessFromFileURLs(false);
+        // Relative paths inside assets/ (css/js/images) must resolve from file://.
+        s.setAllowFileAccessFromFileURLs(true);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setLoadsImagesAutomatically(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        // Allow http resources when the page itself is file:// (common for local HTML).
+        if (android.os.Build.VERSION.SDK_INT >= 21) {
+            s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
 
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {

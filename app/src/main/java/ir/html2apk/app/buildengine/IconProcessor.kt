@@ -35,19 +35,27 @@ object IconProcessor {
         val square = decodeCenterSquare(context, iconUri, target = 256)
             ?: throw IllegalArgumentException("فرمت تصویر آیکون پشتیبانی نمی‌شود")
 
-        val result = mutableMapOf<String, ByteArray>()
-        for (path in templateIconEntryPaths) {
-            val m = ApkAssembler.ICON_ENTRY_PATTERN.matchEntire(path) ?: continue
-            val px = DENSITY_SIZES[m.groupValues[1]] ?: continue
-            val scaled = Bitmap.createScaledBitmap(square, px, px, true)
-            val bos = ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.PNG, 100, bos)
-            result[path] = bos.toByteArray()
+        try {
+            val result = mutableMapOf<String, ByteArray>()
+            for (path in templateIconEntryPaths) {
+                val m = ApkAssembler.ICON_ENTRY_PATTERN.matchEntire(path) ?: continue
+                val px = DENSITY_SIZES[m.groupValues[1]] ?: continue
+                val scaled = Bitmap.createScaledBitmap(square, px, px, true)
+                try {
+                    val bos = ByteArrayOutputStream()
+                    scaled.compress(Bitmap.CompressFormat.PNG, 100, bos)
+                    result[path] = bos.toByteArray()
+                } finally {
+                    if (scaled !== square && !scaled.isRecycled) scaled.recycle()
+                }
+            }
+            if (result.isEmpty()) {
+                throw IllegalArgumentException("قالب هیچ آیکونی برای جایگزینی ندارد")
+            }
+            return result
+        } finally {
+            if (!square.isRecycled) square.recycle()
         }
-        if (result.isEmpty()) {
-            throw IllegalArgumentException("قالب هیچ آیکونی برای جایگزینی ندارد")
-        }
-        return result
     }
 
     /** Center-cropped square bitmap for the in-app preview (or null when unreadable). */
@@ -71,11 +79,28 @@ object IconProcessor {
             BitmapFactory.decodeStream(it, null, opts)
         } ?: return null
 
-        val srcSide = minOf(src.width, src.height)
-        val xOff = (src.width - srcSide) / 2
-        val yOff = (src.height - srcSide) / 2
+        try {
+            val srcSide = minOf(src.width, src.height)
+            val xOff = (src.width - srcSide) / 2
+            val yOff = (src.height - srcSide) / 2
 
-        val square = Bitmap.createBitmap(src, xOff, yOff, srcSide, srcSide)
-        return Bitmap.createScaledBitmap(square, target, target, true)
+            val cropped = Bitmap.createBitmap(src, xOff, yOff, srcSide, srcSide)
+            try {
+                // If already the target size, avoid an extra allocation.
+                if (cropped.width == target && cropped.height == target) {
+                    // Caller owns the returned bitmap; do not recycle cropped here.
+                    // Detach from src so we can recycle src safely.
+                    return if (cropped !== src) cropped else cropped.copy(cropped.config ?: Bitmap.Config.ARGB_8888, false)
+                }
+                val scaled = Bitmap.createScaledBitmap(cropped, target, target, true)
+                if (scaled !== cropped && !cropped.isRecycled) cropped.recycle()
+                return scaled
+            } catch (t: Throwable) {
+                if (!cropped.isRecycled) cropped.recycle()
+                throw t
+            }
+        } finally {
+            if (!src.isRecycled) src.recycle()
+        }
     }
 }

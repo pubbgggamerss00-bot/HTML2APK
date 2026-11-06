@@ -92,9 +92,26 @@ object KeystoreManager {
         return SigningKey(kp.private, cert, requestedAlias, fingerprintOf(cert), createdNew = true)
     }
 
+    /**
+     * Register BouncyCastle robustly on Android.
+     * Prefer insertProviderAt(1) so it is preferred over the platform provider
+     * for the algorithms we need (avoids "algorithm not found" on some OEMs).
+     * Synchronized to avoid concurrent registration races.
+     * Silently ignore if already present under any priority.
+     */
+    @Synchronized
     private fun registerBouncyCastle() {
-        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
-            Security.addProvider(BouncyCastleProvider())
+        val name = BouncyCastleProvider.PROVIDER_NAME
+        if (Security.getProvider(name) != null) return
+        try {
+            Security.insertProviderAt(BouncyCastleProvider(), 1)
+        } catch (t: Throwable) {
+            // Some environments reject insertProviderAt; fall back to addProvider.
+            try {
+                Security.addProvider(BouncyCastleProvider())
+            } catch (_: Throwable) {
+                // Provider already present under a different path — continue.
+            }
         }
     }
 

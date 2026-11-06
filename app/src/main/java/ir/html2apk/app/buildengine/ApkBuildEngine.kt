@@ -80,8 +80,23 @@ class ApkBuildEngine(private val context: Context) {
             sink.onStageStart(BuildStage.RESOURCES)
             val t1 = System.currentTimeMillis()
             sink.log(LogType.CMD, "open assets://template.apk")
-            val templateBytes = context.assets.open("template.apk").use { it.readBytes() }
-            val template = ApkAssembler.readTemplate(templateBytes)
+            val templateBytes = try {
+                context.assets.open("template.apk").use { it.readBytes() }
+            } catch (e: Exception) {
+                throw IOException(
+                    "قالب APK داخل اپ پیدا نشد (assets/template.apk). " +
+                        "اپ را دوباره بسازید یا از build_template.sh استفاده کنید.",
+                    e,
+                )
+            }
+            if (templateBytes.isEmpty()) {
+                throw IOException("قالب APK خالی است — build_template.sh را اجرا کنید")
+            }
+            val template = try {
+                ApkAssembler.readTemplate(templateBytes)
+            } catch (e: Exception) {
+                throw IOException("خواندن قالب APK ناموفق بود: ${e.message}", e)
+            }
             sink.log(
                 LogType.INFO,
                 "template: ${template.entries.size} entries, icons=${template.iconEntryPaths.size}"
@@ -89,8 +104,12 @@ class ApkBuildEngine(private val context: Context) {
 
             val iconReplacements = if (request.iconUri != null) {
                 sink.log(LogType.CMD, "bitmap decode + center-crop + resize (48..192px)")
-                val icons = IconProcessor.process(context, request.iconUri, template.iconEntryPaths)
-                sink.log(LogType.OK, "آیکون برای ${icons.size} تراکم تولید شد (mxpi..xxxhdpi)")
+                val icons = try {
+                    IconProcessor.process(context, request.iconUri, template.iconEntryPaths)
+                } catch (e: Exception) {
+                    throw IOException("پردازش آیکون ناموفق بود: ${e.message}", e)
+                }
+                sink.log(LogType.OK, "آیکون برای ${icons.size} تراکم تولید شد (mdpi..xxxhdpi)")
                 icons
             } else {
                 sink.log(LogType.INFO, "بدون آیکون سفارشی — آیکون پیش‌فرض قالب حفظ می‌شود")
@@ -103,17 +122,21 @@ class ApkBuildEngine(private val context: Context) {
             sink.onStageStart(BuildStage.ASSEMBLE)
             val t2 = System.currentTimeMillis()
             sink.log(LogType.CMD, "axml --patch-manifest (package=${request.packageName})")
-            val manifestBytes = AXmlEditor.patchManifest(
-                template.entries.getValue("AndroidManifest.xml"),
-                ManifestPatch(
-                    packageName = request.packageName,
-                    versionCode = request.versionCode,
-                    versionName = request.versionName,
-                    label = request.appName,
-                    screenOrientation = request.orientation.manifestValue,
-                    internetPermission = request.internetPermission,
-                ),
-            )
+            val manifestBytes = try {
+                AXmlEditor.patchManifest(
+                    template.entries.getValue("AndroidManifest.xml"),
+                    ManifestPatch(
+                        packageName = request.packageName,
+                        versionCode = request.versionCode,
+                        versionName = request.versionName,
+                        label = request.appName,
+                        screenOrientation = request.orientation.manifestValue,
+                        internetPermission = request.internetPermission,
+                    ),
+                )
+            } catch (e: Exception) {
+                throw IOException("پچ مانیفست ناموفق بود: ${e.message}", e)
+            }
             val orientLabel = when (request.orientation) {
                 Orientation.PORTRAIT -> "portrait"
                 Orientation.LANDSCAPE -> "landscape"
@@ -126,17 +149,30 @@ class ApkBuildEngine(private val context: Context) {
                     "INTERNET=${if (request.internetPermission) "keep" else "remove"}"
             )
 
-            val arscBytes = if (template.entries.containsKey("resources.arsc")) {
-                ArscPatcher.patchPackageName(template.entries.getValue("resources.arsc"), request.packageName)
-            } else template.entries.getValue("resources.arsc") // unreachable for our template
+            val arscBytes = try {
+                if (template.entries.containsKey("resources.arsc")) {
+                    ArscPatcher.patchPackageName(
+                        template.entries.getValue("resources.arsc"),
+                        request.packageName,
+                    )
+                } else {
+                    throw IOException("قالب فاقد resources.arsc است")
+                }
+            } catch (e: Exception) {
+                throw IOException("پچ resources.arsc ناموفق بود: ${e.message}", e)
+            }
             sink.log(LogType.OK, "resources.arsc package rewritten")
 
             coroutineContext.ensureActive()
             sink.log(LogType.CMD, "zip -r -X -0 (STORED) + zipalign 4")
             val assembledFile = File(tempRoot, "assembled.apk")
-            val assembled = ApkAssembler.assemble(
-                template, manifestBytes, arscBytes, iconReplacements, webRoot, assembledFile
-            )
+            val assembled = try {
+                ApkAssembler.assemble(
+                    template, manifestBytes, arscBytes, iconReplacements, webRoot, assembledFile
+                )
+            } catch (e: Exception) {
+                throw IOException("مونتاژ APK ناموفق بود: ${e.message}", e)
+            }
             sink.log(
                 LogType.OK,
                 "${assembled.entryCount} entries STORED & 4-byte aligned (${formatSize(assembled.totalBytes)})"
@@ -147,7 +183,15 @@ class ApkBuildEngine(private val context: Context) {
             sink.onStageStart(BuildStage.SIGN)
             val t3 = System.currentTimeMillis()
             coroutineContext.ensureActive()
-            val key = KeystoreManager.getOrCreate(context, request.keystorePassword, request.keyAlias)
+            val key = try {
+                KeystoreManager.getOrCreate(context, request.keystorePassword, request.keyAlias)
+            } catch (e: Exception) {
+                throw IOException(
+                    "ساخت/بارگذاری کلید امضا ناموفق بود: ${e.message}. " +
+                        "گذرواژهٔ keystore را بررسی کنید یا دادهٔ اپ را پاک کنید تا کلید جدید ساخته شود.",
+                    e,
+                )
+            }
             sink.log(
                 LogType.OK,
                 if (key.createdNew) {
