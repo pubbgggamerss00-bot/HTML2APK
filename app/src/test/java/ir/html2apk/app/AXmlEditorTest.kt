@@ -2,7 +2,7 @@ package ir.html2apk.app
 
 import ir.html2apk.app.buildengine.AXml
 import ir.html2apk.app.buildengine.AXmlEditor
-import ir.html2apk.app.buildengine.ArsPatcher
+import ir.html2apk.app.buildengine.ArscPatcher
 import ir.html2apk.app.buildengine.ManifestPatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -18,7 +18,8 @@ import java.io.ByteArrayOutputStream
  *    (built here directly from the AOSP ResStringPool / ResXMLTree spec).
  * 2. Tests against the *real* aapt2 output of the template module: CI extracts
  *    AndroidManifest.xml + resources.arsc from the built template APK into
- *    app/src/test/resources/*.bin; locally (absent fixture) these tests skip.
+ *    app/src/test/resources (files real_template_manifest.bin / real_resources_arsc.bin);
+ *    locally (absent fixture) these tests skip.
  */
 class AXmlEditorTest {
 
