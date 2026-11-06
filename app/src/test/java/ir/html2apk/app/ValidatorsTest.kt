@@ -106,4 +106,28 @@ class ValidatorsTest {
     fun `java prefix is reserved`() {
         assertFalse(validate("java.example.app").isValid)
     }
+
+    // ---- deriveAppName: the app-name fallback when the user leaves the field empty ----
+
+    @Test
+    fun `extension is stripped from the input file name`() {
+        assertEquals("my site", Validators.deriveAppName("my site.html"))
+        assertEquals("my site", Validators.deriveAppName("my site.ZIP"))
+    }
+
+    @Test
+    fun `filename-unsafe characters are replaced`() {
+        assertEquals("my site 2024", Validators.deriveAppName("my site:2024?.html"))
+    }
+
+    @Test
+    fun `name with no extension passes through`() {
+        assertEquals("وب اپلیکیشن", Validators.deriveAppName("وب اپلیکیشن"))
+    }
+
+    @Test
+    fun `extension-only name falls back to App`() {
+        assertEquals("App", Validators.deriveAppName(".html"))
+        assertEquals("App", Validators.deriveAppName(""))
+    }
 }

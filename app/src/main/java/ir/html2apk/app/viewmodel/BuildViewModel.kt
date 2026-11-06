@@ -123,7 +123,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             // Exactly what the user typed wins. If they left the field empty,
             // the input-file name (without extension) becomes the app name —
             // no invented generic default.
-            appName = form.appName.trim().ifBlank { deriveAppName(name) },
+            appName = form.appName.trim().ifBlank { Validators.deriveAppName(name) },
             packageName = pkg.normalized,
             versionCode = form.versionCode.trim().toIntOrNull()?.coerceIn(1, 2_100_000_000) ?: 1,
             versionName = form.versionName.ifBlank { "1.0" },
@@ -182,18 +182,6 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
                 recordFatal(t)
             }
         }
-    }
-
-    /**
-     * "my site.html" -> "my site" — extension stripped, filename-unsafe
-     * characters removed. Only falls back to a fixed name when the input
-     * file itself had no usable name (e.g. ".html").
-     */
-    private fun deriveAppName(inputName: String): String {
-        val cleaned = inputName.substringBeforeLast('.')
-            .replace(Regex("[\\p{Cntrl}\\\\/:*?\"<>|]"), " ")
-            .trim()
-        return cleaned.ifBlank { "App" }
     }
 
     /**

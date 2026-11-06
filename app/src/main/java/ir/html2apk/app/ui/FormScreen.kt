@@ -3,9 +3,11 @@
 package ir.html2apk.app.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -86,9 +88,11 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(vm::onFilePicked) }
 
-    // ---- launcher-icon picking: ask for media read permission first ----
-    // (SAF itself needs no permission; the request exists so the flow behaves
-    //  like every normal gallery app and future direct-gallery paths work.)
+    // ---- launcher-icon picking: two explicit sources, gallery OR file ----
+    // "از گالری" opens the device's own gallery/photos app (ACTION_PICK);
+    // "از فایل" opens the system document picker (SAF, needs no permission).
+    // Before the gallery path runs, media read permission is requested —
+    // the requested flow the user asked for when picking an icon image.
     val iconPermissions = remember {
         if (Build.VERSION.SDK_INT >= 33) {
             arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
@@ -96,32 +100,41 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
-    val iconPicker = rememberLauncherForActivityResult(
+
+    val galleryPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result -> result.data?.data?.let(vm::onIconPicked) }
+
+    val iconFilePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(vm::onIconPicked) }
+
+    fun openGallery() {
+        galleryPicker.launch(
+            Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+        )
+    }
 
     val iconPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.all { it }) {
-            iconPicker.launch(arrayOf("image/*"))
-        } else {
-            // Permission denied — the system file picker still works, so the
-            // icon feature is never blocked, but the user is told what happened.
+        if (!grants.values.all { it }) {
+            // Permission denied — the system gallery picker itself still works
+            // (it grants read access to the picked image), so the flow is never
+            // blocked; the user is told what happened and what to do instead.
             vm.showError(
-                "دسترسی خواندن تصاویر داده نشد — می‌توانید آیکون را از انتخاب‌گر فایل سیستم انتخاب کنید " +
-                    "یا دسترسی را از تنظیمات فعال کنید"
+                "دسترسی خواندن تصاویر داده نشد — گالری همچنان کار می‌کند، یا آیکون را با گزینهٔ «از فایل» انتخاب کنید"
             )
-            iconPicker.launch(arrayOf("image/*"))
         }
+        openGallery()
     }
 
-    fun launchIconSelection() {
+    fun launchGallerySelection() {
         val granted = iconPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
         if (granted) {
-            iconPicker.launch(arrayOf("image/*"))
+            openGallery()
         } else {
             iconPermissionLauncher.launch(iconPermissions)
         }
@@ -237,8 +250,17 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 label = "نام اپلیکیشن",
                 placeholder = { Text("همان چیزی که بنویسید، همان می‌شود") },
                 supportingText = {
-                    if (form.appName.isBlank()) {
-                        Text(
+                    val inputName = form.inputName
+                    when {
+                        form.appName.isNotBlank() -> Text(
+                            "نام اپ: «${form.appName.trim()}» — دقیقاً همین نام ثبت می‌شود",
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        inputName != null -> Text(
+                            "اگر خالی بماند، نام فایل یعنی «${Validators.deriveAppName(inputName)}» به‌عنوان نام اپ ثبت می‌شود",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> Text(
                             "اگر خالی بماند، نام فایل ورودی به‌عنوان نام اپ ثبت می‌شود",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -323,6 +345,8 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         }
 
         // ---- icon ----
+        // Two explicit sources: the device gallery (with the media-permission
+        // request the user asked for) or any file via the system picker.
         SectionCard {
             Text(
                 text = "۴. آیکون (اختیاری)",
@@ -330,8 +354,8 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (form.iconUri != null) {
+            if (form.iconUri != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconPreview(uri = form.iconUri)
                     Spacer(Modifier.width(12.dp))
                     Text(
@@ -345,15 +369,28 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                         Spacer(Modifier.width(4.dp))
                         Text("حذف")
                     }
-                } else {
-                    OutlinedButton(
-                        onClick = ::launchIconSelection,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("انتخاب تصویر آیکون")
-                    }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = ::launchGallerySelection,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("از گالری")
+                }
+                OutlinedButton(
+                    onClick = { iconFilePicker.launch(arrayOf("image/*")) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("از فایل")
                 }
             }
+            Text(
+                text = "تصویر آیکون را می‌توانید مستقیم از گالری دستگاه یا از فایل‌های گوشی انتخاب کنید",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // ---- signing ----

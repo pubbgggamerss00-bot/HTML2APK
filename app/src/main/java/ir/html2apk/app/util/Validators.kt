@@ -76,4 +76,19 @@ object Validators {
         }
         return PackageValidation(true, normalized, null)
     }
+
+    /**
+     * "my site.html" -> "my site" — extension stripped, filename-unsafe
+     * characters removed. Only falls back to a fixed name when the input
+     * file itself had no usable name (e.g. ".html").
+     *
+     * Used at build time when the user leaves the app-name field empty, and
+     * in the form UI to preview exactly which name will be registered.
+     */
+    fun deriveAppName(inputName: String): String {
+        val cleaned = inputName.substringBeforeLast('.')
+            .replace(Regex("[\\p{Cntrl}\\\\/:*?\"<>|]"), " ")
+            .trim()
+        return cleaned.ifBlank { "App" }
+    }
 }
