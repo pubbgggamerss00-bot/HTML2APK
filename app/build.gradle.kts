@@ -8,11 +8,13 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "ir.html2apk.app"
+        // Package identity per the original technical spec (com.html2apk.builder);
+        // the code namespace (ir.html2apk.app) is internal and irrelevant at install time.
+        applicationId = "com.html2apk.builder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "3.5.0"
+        versionCode = 36
+        versionName = "3.6.0"
     }
 
     buildTypes {
