@@ -28,9 +28,11 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
 
         webView = new WebView(this);
-        webView.setBackgroundColor(0xFF0A1411);
 
         WebSettings s = webView.getSettings();
+        // The settings below mirror the original v3.4.0 shell exactly —
+        // pinch-zoom included (setSupportZoom(true) + built-in controls, no
+        // on-screen +/- buttons).
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
@@ -44,8 +46,9 @@ public class MainActivity extends Activity {
         s.setUseWideViewPort(true);
         s.setLoadsImagesAutomatically(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setSupportZoom(false);
-        s.setBuiltInZoomControls(false);
+        // v3.4.0: zoom enabled
+        s.setSupportZoom(true);
+        s.setBuiltInZoomControls(true);
         s.setDisplayZoomControls(false);
         s.setCacheMode(WebSettings.LOAD_DEFAULT);
         // Allow http resources when the page itself is file:// (common for local HTML).
@@ -110,5 +113,23 @@ public class MainActivity extends Activity {
             webView = null;
         }
         super.onDestroy();
+    }
+
+    // v3.4.0 lifecycle parity: pause/resume the WebView so timers, videos and
+    // JS loops stop when the app is backgrounded (battery + correctness).
+    @Override
+    protected void onPause() {
+        if (webView != null) {
+            webView.onPause();
+        }
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+        }
     }
 }

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -59,6 +61,11 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
         vm.refreshKeystoreInfo()
     }
 
+    // v3.4.0 «انتخاب فایل keystore (.p12 / .jks)» flow
+    val keystorePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let(vm::onKeystorePicked) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -95,7 +102,7 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
             )
             Spacer(Modifier.height(8.dp))
             InfoNote(
-                "اولین ساخت: کلید RSA-2048 با اعتبار ۳۰ سال روی دستگاه ساخته و در حافظهٔ داخلی نگه‌داری می‌شود؛ " +
+                "اولین ساخت: کلید RSA-2048 با ماندگاری ۲۵ سال روی دستگاه ساخته و در حافظهٔ داخلی نگه‌داری می‌شود؛ " +
                     "ساخت‌های بعدی از همان کلید استفاده می‌کنند تا بتوانید اپ‌های قبلی را ارتقا دهید."
             )
             Spacer(Modifier.height(6.dp))
@@ -119,10 +126,14 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 KeyInfoLine(
                     label = "وضعیت",
-                    value = if (ks.exists) "کلید ساخته شده و آماده است"
-                    else "در اولین بیلد ساخته می‌شود",
+                    value = when {
+                        !ks.exists -> "در اولین بیلد ساخته می‌شود"
+                        ks.mode == "custom" -> "کلید سفارشی فعال است"
+                        else -> "کلید ساخته شده و آماده است"
+                    },
                 )
                 if (ks.exists && ksError == null) {
+                    KeyInfoLine(label = "نوع کلید", value = if (ks.mode == "custom") "فایل keystore کاربر" else "امضای خودکار اپ")
                     KeyInfoLine(label = "نام کلید", value = ks.alias ?: "—")
                     KeyInfoLine(label = "الگوریتم", value = ks.algorithm ?: "—")
                     KeyInfoLine(label = "اعتبار گواهی", value = ks.validUntil?.let { "تا $it" } ?: "—")
@@ -152,6 +163,56 @@ fun SettingsScreen(state: UiState, vm: BuildViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = ir.html2apk.app.ui.theme.Warning,
             )
+        }
+
+        // ---- custom keystore file (v3.4.0 «انتخاب فایل keystore») ----
+        SectionCard {
+            Text(
+                text = "کلید امضای سفارشی (فایل Keystore)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(8.dp))
+            InfoNote(
+                "فایل keystore شخصی خودتان (.p12 / .jks) را انتخاب کنید تا همهٔ خروجی‌ها با کلید اختصاصی شما امضا شوند؛ " +
+                    "رمز keystore بالای صفحه به‌عنوان رمز فایل استفاده می‌شود."
+            )
+            Spacer(Modifier.height(6.dp))
+            if (ks.mode == "custom") {
+                Text(
+                    text = "فایل PKCS12 با کلید خصوصی قابل استفاده است — خروجی‌ها با این کلید امضا می‌شوند",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = vm::clearCustomKeystore,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("حذف کلید سفارشی (بازگشت به کلید خودکار)")
+                }
+            } else {
+                Text(
+                    text = "فایل keystore سفارشی انتخاب نشده است",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = {
+                    keystorePicker.launch(
+                        arrayOf(
+                            "application/x-pkcs12",
+                            "application/octet-stream",
+                            "*/*",
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("انتخاب فایل keystore (.p12 / .jks)")
+            }
         }
 
         // ---- manifest & permissions ----

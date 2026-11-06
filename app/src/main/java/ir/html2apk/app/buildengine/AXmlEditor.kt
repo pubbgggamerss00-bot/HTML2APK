@@ -365,6 +365,8 @@ data class ManifestPatch(
     val screenOrientation: Int,
     val internetPermission: Boolean,
     val usesCleartextTraffic: Boolean = false,
+    /** false = remove the LAUNCHER category (v3.4.0 «نمایش در لانچر» toggle). */
+    val showInLauncher: Boolean = true,
 )
 
 class ManifestEditor(private val doc: AXml.Document) {
@@ -377,6 +379,8 @@ class ManifestEditor(private val doc: AXml.Document) {
         "versionName" to AXml.ANDROID_VERSION_NAME,
         "usesCleartextTraffic" to AXml.ANDROID_USES_CLEARTEXT_TRAFFIC,
     )
+
+    private val LAUNCHER_CATEGORY = "android.intent.category.LAUNCHER"
 
     private fun element(name: String): AXml.Node.StartElement =
         doc.nodes.filterIsInstance<AXml.Node.StartElement>()
@@ -547,6 +551,71 @@ class ManifestEditor(private val doc: AXml.Document) {
         ensureResourceMapCoversPool()
     }
 
+    /**
+     * v3.4.0 «نمایش در لانچر» toggle: removes (or keeps) the
+     * `<category android:name="android.intent.category.LAUNCHER"/>` element so the
+     * generated app appears (or not) in the launcher. When [enabled] is true and the
+     * template already declares it, this is a no-op that keeps the template intact.
+     */
+    fun setLauncherVisibility(enabled: Boolean) {
+        val androidNs = doc.stringIndex(AXml.ANDROID_NS)
+        val nodes = doc.nodes
+        var startIdx = -1
+        for (i in nodes.indices) {
+            val n = nodes[i]
+            if (n is AXml.Node.StartElement && doc.strings.getOrNull(n.nameIdx) == "category") {
+                val nameAttr = n.attrs.firstOrNull {
+                    it.nsIdx == androidNs && doc.strings.getOrNull(it.nameIdx) == "name"
+                }
+                if (nameAttr != null) {
+                    val v = nameAttr.valueData
+                    if (v in doc.strings.indices && doc.strings[v] == LAUNCHER_CATEGORY) {
+                        startIdx = i
+                        break
+                    }
+                }
+            }
+        }
+        if (!enabled && startIdx != -1) {
+            // remove the category StartElement + its matching EndElement
+            var endIdx = -1
+            for (j in startIdx + 1 until nodes.size) {
+                val n = nodes[j]
+                if (n is AXml.Node.EndElement && doc.strings.getOrNull(n.nameIdx) == "category") {
+                    endIdx = j
+                    break
+                }
+            }
+            require(endIdx != -1) { "unbalanced <category> element" }
+            nodes.removeAt(endIdx)
+            nodes.removeAt(startIdx)
+        }
+        if (enabled && startIdx == -1) {
+            // re-add inside the launcher intent-filter (before its EndElement)
+            val filterStart = nodes.indexOfFirst {
+                it is AXml.Node.StartElement && doc.strings.getOrNull(it.nameIdx) == "intent-filter"
+            }
+            // No intent-filter in the template -> nothing to restore; keep the patch non-fatal.
+            if (filterStart == -1) return
+            var filterEnd = -1
+            for (j in filterStart + 1 until nodes.size) {
+                val n = nodes[j]
+                if (n is AXml.Node.EndElement && doc.strings.getOrNull(n.nameIdx) == "intent-filter") {
+                    filterEnd = j
+                    break
+                }
+            }
+            require(filterEnd != -1) { "unbalanced <intent-filter> element" }
+            val catIdx = doc.stringIndexOrCreate("category")
+            val nameIdx = androidAttrNameIdxOrCreate("name")
+            val valueIdx = doc.stringIndexOrCreate(LAUNCHER_CATEGORY)
+            val attr = AXml.Attr(androidNs, nameIdx, valueIdx, AXml.TYPE_STRING, valueIdx)
+            nodes.add(filterEnd, AXml.Node.EndElement(-1, catIdx))
+            nodes.add(filterEnd, AXml.Node.StartElement(-1, catIdx, mutableListOf(attr)))
+            ensureResourceMapCoversPool()
+        }
+    }
+
     fun serialize(): ByteArray {
         ensureResourceMapCoversPool()
         return AXml.serialize(doc)
@@ -565,6 +634,7 @@ object AXmlEditor {
         editor.setScreenOrientation(patch.screenOrientation)
         editor.setInternetPermission(patch.internetPermission)
         editor.setUsesCleartextTraffic(patch.usesCleartextTraffic)
+        editor.setLauncherVisibility(patch.showInLauncher)
         return editor.serialize()
     }
 }

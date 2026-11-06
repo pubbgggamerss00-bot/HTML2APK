@@ -17,8 +17,8 @@ android {
         // size profile the user expects.
         minSdk = 29
         targetSdk = 34
-        versionCode = 37
-        versionName = "3.6.1"
+        versionCode = 38
+        versionName = "3.7.0"
     }
 
     buildTypes {

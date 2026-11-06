@@ -8,7 +8,7 @@ import java.util.zip.ZipInputStream
 
 /** Thrown when a ZIP entry tries to escape the extraction directory (Zip-Slip attack). */
 class ZipSlipException(entryName: String) :
-    SecurityException("Blocked unsafe zip entry: $entryName")
+    SecurityException("ورودی ناامن در ZIP: $entryName")
 
 /**
  * Hardened ZIP extractor: blocks Zip-Slip (path traversal), absolute paths,
@@ -17,9 +17,10 @@ class ZipSlipException(entryName: String) :
  */
 object ZipUtils {
 
-    const val MAX_ENTRIES = 4000
-    const val MAX_TOTAL_BYTES: Long = 200L * 1024 * 1024
-    const val MAX_SINGLE_FILE_BYTES: Long = 100L * 1024 * 1024
+    // v3.4.0 limits: «حداکثر ۲۵۶ مگابایت — index.html باید در ریشه ZIP باشد»
+    const val MAX_ENTRIES = 10000
+    const val MAX_TOTAL_BYTES: Long = 256L * 1024 * 1024
+    const val MAX_SINGLE_FILE_BYTES: Long = 256L * 1024 * 1024
 
     /** Extracts [input] into [targetDir]; returns the list of extracted file names. */
     fun extract(
@@ -53,7 +54,8 @@ object ZipUtils {
 
                 count++
                 if (count > MAX_ENTRIES) {
-                    throw IllegalStateException("تعداد فایل‌های ZIP بیش از حد مجاز است ($MAX_ENTRIES)")
+                    // v3.4.0 message: «تعداد ورودی‌های ZIP بیش از حد مجاز است (…)»
+                    throw IllegalStateException("تعداد ورودی‌های ZIP بیش از حد مجاز است ($MAX_ENTRIES)")
                 }
 
                 target.parentFile?.mkdirs()
@@ -66,7 +68,10 @@ object ZipUtils {
                         fileBytes += read
                         total += read
                         if (fileBytes > MAX_SINGLE_FILE_BYTES || total > maxTotalBytes) {
-                            throw IllegalStateException("حجم فایل ZIP بیش از حد مجاز است")
+                            // v3.4.0 message: «حجم کل محتوای ZIP بیش از حد مجاز است (ZIP Bomb)»
+                            throw IllegalStateException(
+                                "حجم کل محتوای ZIP بیش از حد مجاز است (ZIP Bomb)"
+                            )
                         }
                         fos.write(buf, 0, read)
                     }

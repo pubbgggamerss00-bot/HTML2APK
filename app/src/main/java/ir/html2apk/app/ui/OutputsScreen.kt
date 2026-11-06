@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.InstallMobile
 import androidx.compose.material.icons.filled.Inventory2
@@ -215,6 +216,14 @@ private fun OutputRow(output: OutputStore.SavedOutput, vm: BuildViewModel) {
                     Icons.Filled.InstallMobile,
                     contentDescription = "نصب مستقیم پکیج",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            IconButton(onClick = { vm.deleteOutput(output) }) {
+                Icon(
+                    Icons.Filled.Delete,
+                    contentDescription = "حذف خروجی",
+                    tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp),
                 )
             }

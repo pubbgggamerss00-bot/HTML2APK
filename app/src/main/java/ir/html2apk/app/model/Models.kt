@@ -2,13 +2,13 @@ package ir.html2apk.app.model
 
 import android.net.Uri
 
-/** The five build stages shown in the compiler tab (titles mirror the v3.4.0 pipeline). */
+/** The five build stages shown in the compiler tab — exact v3.4.0 pipeline titles. */
 enum class BuildStage(val index: Int, val title: String) {
-    PREPARE(0, "استخراج فایل ورودی و قالب پایه (template.apk)"),
-    RESOURCES(1, "پردازش منابع و آیکون تطبیقی"),
-    ASSEMBLE(2, "بازنویسی باینری AXML، تزریق فایل‌های وب و Zipalign"),
-    SIGN(3, "امضای دیجیتال v1+v2+v3"),
-    SAVE(4, "ذخیرهٔ خروجی در Downloads/HTML2APK");
+    PREPARE(0, "استخراج قالب پایه template.apk"),
+    RESOURCES(1, "تزریق فایل‌های وب به مسیر assets/"),
+    ASSEMBLE(2, "بازنویسی باینری AXML مانیفست و شناسه پکیج"),
+    SIGN(3, "تراز ۴ بایتی Zipalign و بازنویسی ZIP"),
+    SAVE(4, "امضای دیجیتال v1+v2+v3 و خروجی Downloads");
 
     companion object {
         val COUNT = entries.size
@@ -52,6 +52,8 @@ data class BuildRequest(
     val keyAlias: String,
     val internetPermission: Boolean,
     val usesCleartextTraffic: Boolean = false,
+    /** false = the generated app keeps no launcher icon (like the v3.4.0 toggle). */
+    val showInLauncher: Boolean = true,
 )
 
 /** Mutable form state kept by the ViewModel. */
@@ -69,4 +71,6 @@ data class FormState(
     val keyAlias: String = "html2apk",
     val internetPermission: Boolean = true,
     val usesCleartextTraffic: Boolean = false,
+    /** v3.4.0 toggle: when false the generated APK gets no launcher icon. */
+    val showInLauncher: Boolean = true,
 )

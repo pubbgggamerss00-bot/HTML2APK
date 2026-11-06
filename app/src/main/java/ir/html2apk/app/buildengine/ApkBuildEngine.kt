@@ -37,8 +37,9 @@ interface BuildSink {
 class ApkBuildEngine(private val context: Context) {
 
     companion object {
-        /** Hard cap for the *input* file. Mirrors ZipUtils total cap for archives. */
-        const val MAX_INPUT_BYTES: Long = 200L * 1024 * 1024
+        /** Hard cap for the *input* file. Mirrors ZipUtils total cap for archives.
+         *  v3.4.0: «حداکثر ۲۵۶ مگابایت — index.html باید در ریشه ZIP باشد». */
+        const val MAX_INPUT_BYTES: Long = 256L * 1024 * 1024
         private const val COPY_BUF = 64 * 1024
     }
 
@@ -133,6 +134,7 @@ class ApkBuildEngine(private val context: Context) {
                         screenOrientation = request.orientation.manifestValue,
                         internetPermission = request.internetPermission,
                         usesCleartextTraffic = request.usesCleartextTraffic,
+                        showInLauncher = request.showInLauncher,
                     ),
                 )
             } catch (e: Exception) {
@@ -186,7 +188,7 @@ class ApkBuildEngine(private val context: Context) {
             val t3 = System.currentTimeMillis()
             coroutineContext.ensureActive()
             val key = try {
-                KeystoreManager.getOrCreate(context, request.keystorePassword, request.keyAlias)
+                KeystoreManager.getSigningKey(context, request.keystorePassword, request.keyAlias)
             } catch (e: Exception) {
                 throw IOException(
                     "ساخت/بارگذاری کلید امضا ناموفق بود: ${e.message}. " +
@@ -199,7 +201,7 @@ class ApkBuildEngine(private val context: Context) {
                 if (key.createdNew) {
                     "keystore generated (RSA-2048, alias=${key.alias})"
                 } else {
-                    "keystore loaded from internal storage (alias=${key.alias})"
+                    "keystore loaded (alias=${key.alias})"
                 }
             )
             sink.log(LogType.CMD, "apksigner sign --v1 --v2 --v3")

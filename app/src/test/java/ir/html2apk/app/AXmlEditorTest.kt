@@ -106,6 +106,11 @@ class AXmlEditorTest {
         val orientation = f.str("screenOrientation", AXml.ANDROID_SCREEN_ORIENTATION)
         val exported = f.str("exported", 0x01010010)
         val trueStr = f.str("true")
+        val intentFilter = f.str("intent-filter")
+        val action = f.str("action")
+        val mainAction = f.str("android.intent.action.MAIN")
+        val category = f.str("category")
+        val launcherCategory = f.str("android.intent.category.LAUNCHER")
 
         val body = ByteArrayOutputStream()
 
@@ -180,6 +185,58 @@ class AXmlEditorTest {
         body.write(le16(0))
         body.write(le16(0))
         body.write(actAttrs.toByteArray())
+
+        // intent-filter with MAIN + LAUNCHER inside the activity
+        body.write(nodeHeader(0x0102, 36))
+        body.write(le32(-1))
+        body.write(le32(intentFilter))
+        body.write(le16(20))
+        body.write(le16(20))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(le16(0))
+
+        val mainAttrs = ByteArrayOutputStream().apply {
+            write(attr(uri, name, mainAction, AXml.TYPE_STRING, mainAction))
+        }
+        body.write(nodeHeader(0x0102, 36 + 20))
+        body.write(le32(-1))
+        body.write(le32(action))
+        body.write(le16(20))
+        body.write(le16(20))
+        body.write(le16(1))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(mainAttrs.toByteArray())
+        body.write(nodeHeader(0x0103, 24))
+        body.write(le32(-1))
+        body.write(le32(action))
+
+        val catAttrs = ByteArrayOutputStream().apply {
+            write(attr(uri, name, launcherCategory, AXml.TYPE_STRING, launcherCategory))
+        }
+        body.write(nodeHeader(0x0102, 36 + 20))
+        body.write(le32(-1))
+        body.write(le32(category))
+        body.write(le16(20))
+        body.write(le16(20))
+        body.write(le16(1))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(le16(0))
+        body.write(catAttrs.toByteArray())
+        body.write(nodeHeader(0x0103, 24))
+        body.write(le32(-1))
+        body.write(le32(category))
+
+        body.write(nodeHeader(0x0103, 24))
+        body.write(le32(-1))
+        body.write(le32(intentFilter))
+        body.write(nodeHeader(0x0103, 24))
+        body.write(le32(-1))
+        body.write(le32(activity))
 
         // end application, end manifest, end namespace
         body.write(nodeHeader(0x0103, 24))
@@ -325,6 +382,37 @@ class AXmlEditorTest {
         if (vcIdx in doc.resourceIds.indices) {
             assertEquals(AXml.ANDROID_VERSION_CODE, doc.resourceIds[vcIdx])
         }
+    }
+
+    @Test
+    fun `showInLauncher false removes the LAUNCHER category`() {
+        val withCategory = AXmlEditor.patchManifest(
+            buildFixture(),
+            ManifestPatch("a.b", 1, "1.0", "L", -1, true, showInLauncher = true)
+        )
+        val doc1 = AXml.parse(withCategory)
+        assertEquals(
+            "android.intent.category.LAUNCHER",
+            stringAttr(doc1, findElement(doc1, "category"), "name", namespaced = true)
+        )
+
+        // hide from launcher -> the category element is gone entirely
+        val hidden = AXmlEditor.patchManifest(
+            buildFixture(),
+            ManifestPatch("a.b", 1, "1.0", "L", -1, true, showInLauncher = false)
+        )
+        val doc2 = AXml.parse(hidden)
+        val categories = doc2.nodes.filterIsInstance<AXml.Node.StartElement>()
+            .filter { doc2.strings.getOrNull(it.nameIdx) == "category" }
+        assertTrue("LAUNCHER category must be removed", categories.isEmpty())
+        // the launcher intent-filter itself must stay intact (action MAIN etc.)
+        val filters = doc2.nodes.filterIsInstance<AXml.Node.StartElement>()
+            .filter { doc2.strings.getOrNull(it.nameIdx) == "intent-filter" }
+        assertEquals(1, filters.size)
+        // document must still be structurally valid (balanced start/end)
+        val starts = doc2.nodes.count { it is AXml.Node.StartElement }
+        val ends = doc2.nodes.count { it is AXml.Node.EndElement }
+        assertEquals(starts, ends)
     }
 
     // ------------------------------------------------------------------

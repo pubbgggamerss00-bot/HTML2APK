@@ -47,6 +47,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -84,13 +85,26 @@ fun BuildScreen(state: UiState, vm: BuildViewModel) {
     val form = state.form
     val context = LocalContext.current
     val pkgValidation = remember(form.packageName) { Validators.validatePackageName(form.packageName) }
+    val appNameValidation = remember(form.appName) { Validators.validateAppName(form.appName.trim().ifBlank { "Web App" }) }
+    val versionNameValidation = remember(form.versionName) { Validators.validateVersionName(form.versionName) }
+    val versionCodeValidation = remember(form.versionCode) { Validators.validateVersionCode(form.versionCode) }
+    val fieldsValid = appNameValidation.isValid &&
+        versionNameValidation.isValid &&
+        versionCodeValidation.isValid
     val canBuild = form.inputUri != null &&
         pkgValidation.isValid &&
+        fieldsValid &&
         state.phase != Phase.RUNNING
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(vm::onFilePicked) }
+
+    // The MIME list is deliberately wide: many providers (Telegram, downloads,
+    // file managers) store .html/.zip files as application/octet-stream, and a
+    // narrow filter makes the files invisible — the «انتخاب فایل» then appears
+    // broken. Acceptance of the picked file is validated by extension in the VM
+    // (v3.4.0 rule: «فقط ZIP یا HTML پذیرفته می‌شود»).
 
     // ---- launcher-icon picking: two explicit sources, gallery OR file ----
     // "از گالری" opens the device's own gallery/photos app (ACTION_PICK);
@@ -225,7 +239,16 @@ fun BuildScreen(state: UiState, vm: BuildViewModel) {
                 }
             } else {
                 Button(
-                    onClick = { filePicker.launch(arrayOf("text/html", "application/zip")) },
+                    onClick = {
+                        filePicker.launch(
+                            arrayOf(
+                                "text/html",
+                                "application/zip",
+                                "application/x-zip-compressed",
+                                "application/octet-stream",
+                            )
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("انتخاب فایل HTML یا ZIP")
@@ -251,10 +274,15 @@ fun BuildScreen(state: UiState, vm: BuildViewModel) {
                 value = form.appName,
                 onValueChange = { v -> vm.updateForm { it.copy(appName = v) } },
                 label = "نام اپلیکیشن (Application Title)",
-                placeholder = { Text("همان چیزی که بنویسید، همان می‌شود") },
+                placeholder = { Text("مثال: پرتال سازمانی یا فروشگاه") },
+                isError = form.appName.isNotBlank() && !appNameValidation.isValid,
                 supportingText = {
                     val inputName = form.inputName
                     when {
+                        form.appName.isNotBlank() && !appNameValidation.isValid -> Text(
+                            appNameValidation.errorMessage ?: "",
+                            color = MaterialTheme.colorScheme.error,
+                        )
                         form.appName.isNotBlank() -> Text(
                             "نام اپ: «${form.appName.trim()}» — دقیقاً همین نام ثبت می‌شود",
                             color = MaterialTheme.colorScheme.primary,
@@ -304,13 +332,47 @@ fun BuildScreen(state: UiState, vm: BuildViewModel) {
                     onValueChange = { v -> vm.updateForm { it.copy(versionCode = v.filter { c -> c.isDigit() }) } },
                     label = "کد بیلد (Version Code)",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = form.versionCode.isNotBlank() && !versionCodeValidation.isValid,
+                    supportingText = {
+                        if (form.versionCode.isNotBlank() && !versionCodeValidation.isValid) {
+                            Text(versionCodeValidation.errorMessage ?: "", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 H2ATextField(
                     value = form.versionName,
                     onValueChange = { v -> vm.updateForm { it.copy(versionName = v) } },
                     label = "ورژن نمایشی (Name)",
+                    isError = form.versionName.isNotBlank() && !versionNameValidation.isValid,
+                    supportingText = {
+                        if (form.versionName.isNotBlank() && !versionNameValidation.isValid) {
+                            Text(versionNameValidation.errorMessage ?: "", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
                     modifier = Modifier.weight(1f),
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            // v3.4.0 «نمایش در لانچر» toggle
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "نمایش در لانچر",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "اگر خاموش شود، اپ ساخته‌شده آیکونی در صفحهٔ اصلی ندارد",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = form.showInLauncher,
+                    onCheckedChange = { v -> vm.updateForm { it.copy(showInLauncher = v) } },
                 )
             }
         }

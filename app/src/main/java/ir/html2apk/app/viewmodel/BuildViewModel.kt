@@ -60,6 +60,16 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
     fun onFilePicked(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             val (name, size) = OutputStore.queryFileInfo(getApplication(), uri)
+            // v3.4.0 rule: «فقط ZIP یا HTML پذیرفته می‌شود»
+            // (a provider that reports no name at all is accepted — nothing to judge)
+            if (name != null && !Validators.isAcceptedInputName(name)) {
+                _state.update {
+                    it.copy(
+                        error = "فقط فایل ZIP یا HTML پذیرفته می‌شود",
+                    )
+                }
+                return@launch
+            }
             // NOTE: we deliberately do NOT auto-fill the app-name field here —
             // the user asked for exactly the name they type to be used (and
             // only fall back to the input-file name when the field is left
@@ -81,6 +91,50 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearIcon() {
         updateForm { it.copy(iconUri = null) }
+    }
+
+    // ---------------- custom keystore (v3.4.0 «انتخاب فایل keystore») ----------------
+
+    /** Imports a user keystore file (.p12 / .jks) and makes it the signing identity. */
+    fun onKeystorePicked(uri: Uri) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val password = _state.value.form.keystorePassword
+                val key = KeystoreManager.importCustom(app, uri, password)
+                _keystoreInfo.value = KeystoreManager.KeystoreStatus(
+                    exists = true,
+                    alias = key.alias,
+                    sha256 = key.sha256Fingerprint,
+                    algorithm = key.certificate.publicKey.algorithm,
+                    validUntil = null,
+                    error = null,
+                    mode = "custom",
+                )
+                _state.update {
+                    it.copy(
+                        error = null,
+                        logs = it.logs + LogLine(
+                            System.currentTimeMillis(), LogType.OK,
+                            "فایل PKCS12 با کلید خصوصی قابل استفاده است (alias=${key.alias})"
+                        )
+                    )
+                }
+            } catch (t: Throwable) {
+                _state.update {
+                    it.copy(error = "خطا در انتخاب keystore: ${t.message ?: t.javaClass.simpleName}")
+                }
+            }
+        }
+    }
+
+    /** Removes the imported custom keystore (signing falls back to the auto key). */
+    fun clearCustomKeystore() {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            KeystoreManager.clearCustom(app)
+            refreshKeystoreInfo()
+        }
     }
 
     // ---------------- build control ----------------
@@ -112,6 +166,24 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // v3.4.0 field validation (exact messages live in Validators)
+        val resolvedAppName = form.appName.trim().ifBlank { Validators.deriveAppName(name) }
+        val appNameCheck = Validators.validateAppName(resolvedAppName)
+        if (!appNameCheck.isValid) {
+            _state.update { it.copy(error = appNameCheck.errorMessage) }
+            return
+        }
+        val versionNameCheck = Validators.validateVersionName(form.versionName)
+        if (!versionNameCheck.isValid) {
+            _state.update { it.copy(error = versionNameCheck.errorMessage) }
+            return
+        }
+        val versionCodeCheck = Validators.validateVersionCode(form.versionCode)
+        if (!versionCodeCheck.isValid) {
+            _state.update { it.copy(error = versionCodeCheck.errorMessage) }
+            return
+        }
+
         _state.update {
             it.copy(
                 phase = Phase.RUNNING,
@@ -132,7 +204,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             // Exactly what the user typed wins. If they left the field empty,
             // the input-file name (without extension) becomes the app name —
             // no invented generic default.
-            appName = form.appName.trim().ifBlank { Validators.deriveAppName(name) },
+            appName = resolvedAppName,
             packageName = pkg.normalized,
             versionCode = form.versionCode.trim().toIntOrNull()?.coerceIn(1, 2_100_000_000) ?: 1,
             versionName = form.versionName.ifBlank { "1.0" },
@@ -142,6 +214,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             keyAlias = form.keyAlias,
             internetPermission = form.internetPermission,
             usesCleartextTraffic = form.usesCleartextTraffic,
+            showInLauncher = form.showInLauncher,
         )
 
         val engine = ApkBuildEngine(getApplication())
@@ -301,6 +374,22 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Deletes one produced APK (MediaStore entry or fallback file) — the v3.4.0 deleteOutput. */
+    fun deleteOutput(output: OutputStore.SavedOutput) {
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (output.inMediaStore) {
+                    app.contentResolver.delete(output.uri, null, null)
+                } else {
+                    output.localFile?.delete()
+                }
+            } catch (_: Exception) {
+            }
+            refreshOutputs()
+        }
+    }
+
     // ---------------- SDK settings tab ----------------
 
     fun refreshKeystoreInfo() {
@@ -325,6 +414,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
                     alias = key.alias,
                     sha256 = key.sha256Fingerprint,
                     algorithm = key.certificate.publicKey.algorithm + "-2048",
+                    mode = "auto",
                 )
             } catch (t: Throwable) {
                 showError("بازتولید کلید ناموفق بود: ${t.message ?: t.javaClass.simpleName}")
