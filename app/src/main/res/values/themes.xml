@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="background_dark">#0A1411</color>
-    <color name="ic_launcher_background">#0F2A21</color>
+    <color name="background_dark">#080E1C</color>
+    <color name="ic_launcher_background">#0B1326</color>
 
     <style name="Theme.HTML2APK" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/background_dark</item>

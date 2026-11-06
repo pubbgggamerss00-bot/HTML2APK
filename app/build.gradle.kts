@@ -13,8 +13,8 @@ android {
         applicationId = "com.html2apk.builder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 36
-        versionName = "3.6.0"
+        versionCode = 37
+        versionName = "3.6.1"
     }
 
     buildTypes {

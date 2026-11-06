@@ -1,6 +1,7 @@
 package ir.html2apk.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -31,17 +32,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import ir.html2apk.app.ui.theme.AmberTertiary
-import ir.html2apk.app.ui.theme.DarkOutline
-import ir.html2apk.app.ui.theme.EmeraldPrimary
+import ir.html2apk.app.ui.theme.Container
+import ir.html2apk.app.ui.theme.ContainerLow
+import ir.html2apk.app.ui.theme.ErrorContainerNavy
+import ir.html2apk.app.ui.theme.ErrorOnContainerNavy
 import ir.html2apk.app.ui.theme.ErrorRed
-import ir.html2apk.app.ui.theme.TextPrimary
-import ir.html2apk.app.ui.theme.TextSecondary
+import ir.html2apk.app.ui.theme.OnSurfaceVariantNavy
+import ir.html2apk.app.ui.theme.OutlineVariant
+import ir.html2apk.app.ui.theme.Primary
+import ir.html2apk.app.ui.theme.TextWhite
+import ir.html2apk.app.ui.theme.Warning
 
-/** Dark-emerald card container used for every form section. */
+/** Navy card container with hairline border — the original card look. */
 @Composable
 fun SectionCard(
     modifier: Modifier = Modifier,
@@ -51,8 +55,9 @@ fun SectionCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = Container.copy(alpha = 0.92f),
         ),
+        border = BorderStroke(1.dp, OutlineVariant.copy(alpha = 0.8f)),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -115,7 +120,7 @@ fun ErrorBanner(message: String, onDismiss: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF2A1210),
+            containerColor = ErrorContainerNavy,
         ),
     ) {
         Row(
@@ -135,7 +140,7 @@ fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFFFD9D2),
+                color = ErrorOnContainerNavy,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -146,11 +151,12 @@ fun ErrorBanner(message: String, onDismiss: () -> Unit) {
  * OutlinedTextField with EVERY color pinned explicitly.
  *
  * Why not the stock defaults: the theme's resolved input-text color on some
- * devices / Compose stacks came out unreadable against the dark-emerald
- * surfaces — the user typed text and literally could not see what was written.
- * Here the typed text is always bright (TextPrimary), the cursor is always
- * emerald and the textStyle color is set directly as a second guarantee, so
- * visibility can never regress with theme/IME quirks.
+ * devices / Compose stacks came out unreadable against the dark surfaces —
+ * the user typed text and literally could not see what was written.
+ * Here the typed text is always bright (TextWhite on ContainerLow, exactly
+ * like the original TechField), the cursor is always emerald and the textStyle
+ * color is set directly as a second guarantee, so visibility can never regress
+ * with theme/IME quirks.
  */
 @Composable
 fun H2ATextField(
@@ -168,7 +174,7 @@ fun H2ATextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier,
-        textStyle = LocalTextStyle.current.copy(color = TextPrimary),
+        textStyle = LocalTextStyle.current.copy(color = TextWhite),
         label = if (label != null) {
             { Text(label) }
         } else null,
@@ -178,29 +184,33 @@ fun H2ATextField(
         singleLine = singleLine,
         keyboardOptions = keyboardOptions,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = TextPrimary,
-            unfocusedTextColor = TextPrimary,
-            disabledTextColor = TextSecondary,
-            errorTextColor = TextPrimary,
-            cursorColor = EmeraldPrimary,
+            focusedTextColor = TextWhite,
+            unfocusedTextColor = TextWhite,
+            disabledTextColor = OnSurfaceVariantNavy,
+            errorTextColor = TextWhite,
+            focusedContainerColor = ContainerLow,
+            unfocusedContainerColor = ContainerLow,
+            disabledContainerColor = ContainerLow,
+            errorContainerColor = ContainerLow,
+            cursorColor = Primary,
             errorCursorColor = ErrorRed,
-            focusedBorderColor = EmeraldPrimary,
-            unfocusedBorderColor = DarkOutline,
-            errorBorderColor = ErrorRed,
-            focusedLabelColor = EmeraldPrimary,
-            unfocusedLabelColor = TextSecondary,
+            focusedBorderColor = Primary,
+            unfocusedBorderColor = OutlineVariant.copy(alpha = 0.8f),
+            errorBorderColor = ErrorRed.copy(alpha = 0.9f),
+            focusedLabelColor = Primary,
+            unfocusedLabelColor = OnSurfaceVariantNavy,
             errorLabelColor = ErrorRed,
         ),
     )
 }
 
-/** Small amber inline note. */
+/** Small amber inline note (original Warning color). */
 @Composable
 fun InfoNote(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
-        color = AmberTertiary,
+        color = Warning,
         modifier = Modifier.padding(vertical = 4.dp),
     )
 }

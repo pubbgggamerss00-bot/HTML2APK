@@ -44,8 +44,11 @@ import ir.html2apk.app.model.BuildStage
 import ir.html2apk.app.model.LogLine
 import ir.html2apk.app.model.LogType
 import ir.html2apk.app.ui.theme.JetBrainsMono
-import ir.html2apk.app.ui.theme.TerminalBackground
-import ir.html2apk.app.ui.theme.TerminalGreen
+import ir.html2apk.app.ui.theme.ContainerLowest
+import ir.html2apk.app.ui.theme.LogError
+import ir.html2apk.app.ui.theme.LogStage
+import ir.html2apk.app.ui.theme.LogStdout
+import ir.html2apk.app.ui.theme.LogSuccess
 import ir.html2apk.app.viewmodel.BuildViewModel
 import ir.html2apk.app.viewmodel.UiState
 import kotlinx.coroutines.delay
@@ -94,7 +97,7 @@ fun ProgressScreen(state: UiState, vm: BuildViewModel) {
         // ---- terminal log (always LTR, monospace) ----
         Surface(
             shape = RoundedCornerShape(12.dp),
-            color = TerminalBackground,
+            color = ContainerLowest,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
@@ -214,11 +217,13 @@ private fun formatDuration(duration: Long?, state: UiState, isCurrent: Boolean):
 
 @Composable
 private fun LogRow(line: LogLine) {
-    val prefixColor = when (line.type) {
-        LogType.CMD -> TerminalGreen
-        LogType.OK -> MaterialTheme.colorScheme.primary
-        LogType.INFO -> androidx.compose.ui.graphics.Color(0xFF7C9C8D)
-        LogType.ERROR -> MaterialTheme.colorScheme.error
+    // Log colors exactly like the original terminal: stage lines sky-blue,
+    // success lines emerald, stdout slate, errors red.
+    val lineColor = when (line.type) {
+        LogType.CMD -> LogStage
+        LogType.OK -> LogSuccess
+        LogType.INFO -> LogStdout
+        LogType.ERROR -> LogError
     }
     val prefix = when (line.type) {
         LogType.CMD -> "$ "
@@ -231,13 +236,13 @@ private fun LogRow(line: LogLine) {
             text = prefix,
             fontFamily = JetBrainsMono,
             fontSize = 11.sp,
-            color = prefixColor,
+            color = lineColor,
         )
         Text(
             text = line.text,
             fontFamily = JetBrainsMono,
             fontSize = 11.sp,
-            color = if (line.type == LogType.ERROR) MaterialTheme.colorScheme.error else TerminalGreen,
+            color = lineColor,
             modifier = Modifier.weight(1f),
         )
     }

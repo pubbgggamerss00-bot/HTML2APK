@@ -10,9 +10,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Brush
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +38,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -55,6 +59,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import ir.html2apk.app.ui.theme.Emerald
+import ir.html2apk.app.ui.theme.Emerald400
+import ir.html2apk.app.ui.theme.EmeraldChipBg
+import ir.html2apk.app.ui.theme.EmeraldChipText
 import ir.html2apk.app.buildengine.IconProcessor
 import ir.html2apk.app.model.FormState
 import ir.html2apk.app.model.Orientation
@@ -292,10 +300,23 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Orientation.entries.forEach { orientation ->
+                    val selected = form.orientation == orientation
                     FilterChip(
-                        selected = form.orientation == orientation,
+                        selected = selected,
                         onClick = { vm.updateForm { it.copy(orientation = orientation) } },
                         label = { Text(orientation.label) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            selectedContainerColor = EmeraldChipBg,
+                            selectedLabelColor = EmeraldChipText,
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = selected,
+                            borderColor = MaterialTheme.colorScheme.outlineVariant,
+                            selectedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
                     )
                 }
             }
@@ -387,6 +408,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         }
 
         // ---- build button ----
+        // The original signature CTA: emerald gradient pill with a soft glow.
         Button(
             onClick = vm::startBuild,
             enabled = canBuild,
@@ -394,17 +416,40 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 .fillMaxWidth()
                 .height(52.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
+                containerColor = Color.Transparent,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
+                disabledContainerColor = Color.Transparent,
             ),
+            contentPadding = PaddingValues(),
         ) {
-            Text(
-                text = if (state.phase == Phase.FAILED)
-                    "تلاش مجدد برای ساخت"
-                else "ساخت APK امضاشده",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (canBuild) {
+                            Modifier.background(
+                                Brush.horizontalGradient(
+                                    listOf(Emerald, Emerald400, Emerald),
+                                ),
+                                RoundedCornerShape(16.dp),
+                            )
+                        } else {
+                            Modifier.background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(16.dp),
+                            )
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = if (state.phase == Phase.FAILED)
+                        "تلاش مجدد برای ساخت"
+                    else "ساخت APK امضاشده",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
 
         if (!canBuild && form.inputUri == null) {
