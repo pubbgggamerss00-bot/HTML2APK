@@ -1,0 +1,16 @@
+*.iml
+.gradle
+/local.properties
+.idea
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+app/build/
+template/build/
+# template.apk is a build artifact produced by build_template.sh / CI
+app/src/main/assets/template.apk
+# real binary fixtures extracted by CI for unit tests
+app/src/test/resources/real_template_manifest.bin
+app/src/test/resources/real_resources_arsc.bin
