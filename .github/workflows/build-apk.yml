@@ -51,8 +51,13 @@ jobs:
       - name: Build app APK (debug)
         run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk HTML2APK-debug.apk
+      - name: Build app APK (release, unsigned)
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk HTML2APK-debug.apk
+          cp app/build/outputs/apk/release/app-release-unsigned.apk HTML2APK-release-unsigned.apk
 
       - name: Upload test reports (on failure)
         if: failure()
@@ -69,4 +74,11 @@ jobs:
         with:
           name: HTML2APK-debug-apk
           path: HTML2APK-debug.apk
+          retention-days: 90
+
+      - name: Upload release APK artifact (unsigned — sign before publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HTML2APK-release-unsigned-apk
+          path: HTML2APK-release-unsigned.apk
           retention-days: 90
