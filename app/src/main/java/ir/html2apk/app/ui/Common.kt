@@ -12,13 +12,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,7 +35,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import ir.html2apk.app.ui.theme.AmberTertiary
+import ir.html2apk.app.ui.theme.DarkOutline
+import ir.html2apk.app.ui.theme.EmeraldPrimary
 import ir.html2apk.app.ui.theme.ErrorRed
+import ir.html2apk.app.ui.theme.TextPrimary
+import ir.html2apk.app.ui.theme.TextSecondary
 
 /** Dark-emerald card container used for every form section. */
 @Composable
@@ -132,6 +140,58 @@ fun ErrorBanner(message: String, onDismiss: () -> Unit) {
             )
         }
     }
+}
+
+/**
+ * OutlinedTextField with EVERY color pinned explicitly.
+ *
+ * Why not the stock defaults: the theme's resolved input-text color on some
+ * devices / Compose stacks came out unreadable against the dark-emerald
+ * surfaces — the user typed text and literally could not see what was written.
+ * Here the typed text is always bright (TextPrimary), the cursor is always
+ * emerald and the textStyle color is set directly as a second guarantee, so
+ * visibility can never regress with theme/IME quirks.
+ */
+@Composable
+fun H2ATextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: (@Composable () -> Unit)? = null,
+    supportingText: (@Composable () -> Unit)? = null,
+    isError: Boolean = false,
+    singleLine: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        textStyle = LocalTextStyle.current.copy(color = TextPrimary),
+        label = if (label != null) {
+            { Text(label) }
+        } else null,
+        placeholder = placeholder,
+        supportingText = supportingText,
+        isError = isError,
+        singleLine = singleLine,
+        keyboardOptions = keyboardOptions,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary,
+            disabledTextColor = TextSecondary,
+            errorTextColor = TextPrimary,
+            cursorColor = EmeraldPrimary,
+            errorCursorColor = ErrorRed,
+            focusedBorderColor = EmeraldPrimary,
+            unfocusedBorderColor = DarkOutline,
+            errorBorderColor = ErrorRed,
+            focusedLabelColor = EmeraldPrimary,
+            unfocusedLabelColor = TextSecondary,
+            errorLabelColor = ErrorRed,
+        ),
+    )
 }
 
 /** Small amber inline note. */

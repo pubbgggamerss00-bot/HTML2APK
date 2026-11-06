@@ -51,18 +51,15 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
     fun onFilePicked(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             val (name, size) = OutputStore.queryFileInfo(getApplication(), uri)
-            val lower = (name ?: "").lowercase()
+            // NOTE: we deliberately do NOT auto-fill the app-name field here —
+            // the user asked for exactly the name they type to be used (and
+            // only fall back to the input-file name when the field is left
+            // empty, which is decided at build time).
             updateForm { f ->
                 f.copy(
                     inputUri = uri,
                     inputName = name,
                     inputSize = size,
-                    appName = f.appName.ifBlank {
-                        name?.substringBeforeLast('.')
-                            ?.replace(Regex("[^A-Za-z0-9 _-]"), "")
-                            ?.trim()
-                            ?.ifBlank { null } ?: "MyApp"
-                    }
                 )
             }
             _state.update { it.copy(error = null) }
@@ -123,7 +120,10 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             inputUri = uri,
             inputName = name,
             isZip = name.lowercase().endsWith(".zip"),
-            appName = form.appName.ifBlank { "MyApp" },
+            // Exactly what the user typed wins. If they left the field empty,
+            // the input-file name (without extension) becomes the app name —
+            // no invented generic default.
+            appName = form.appName.trim().ifBlank { deriveAppName(name) },
             packageName = pkg.normalized,
             versionCode = form.versionCode.trim().toIntOrNull()?.coerceIn(1, 2_100_000_000) ?: 1,
             versionName = form.versionName.ifBlank { "1.0" },
@@ -185,6 +185,18 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * "my site.html" -> "my site" — extension stripped, filename-unsafe
+     * characters removed. Only falls back to a fixed name when the input
+     * file itself had no usable name (e.g. ".html").
+     */
+    private fun deriveAppName(inputName: String): String {
+        val cleaned = inputName.substringBeforeLast('.')
+            .replace(Regex("[\\p{Cntrl}\\\\/:*?\"<>|]"), " ")
+            .trim()
+        return cleaned.ifBlank { "App" }
+    }
+
+    /**
      * Turns ANY build failure — including Error-level ones — into a FAILED state with
      * the exception class + first stack frames printed into the terminal log, so the
      * user always sees what went wrong instead of the app silently dying.
@@ -219,6 +231,10 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelBuild() {
         buildJob?.cancel()
+    }
+
+    fun showError(message: String) {
+        _state.update { it.copy(error = message) }
     }
 
     fun dismissError() {

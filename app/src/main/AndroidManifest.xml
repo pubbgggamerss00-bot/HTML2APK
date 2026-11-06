@@ -4,6 +4,13 @@
     <!-- Enables the "Install APK" flow on modern Android versions -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Asked at runtime when the user picks a launcher-icon image.
+         Android 13+: granular media permission. Android 12 and below: legacy storage read. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

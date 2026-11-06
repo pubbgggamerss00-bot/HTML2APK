@@ -2,7 +2,10 @@
 
 package ir.html2apk.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -15,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,7 +38,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import ir.html2apk.app.buildengine.IconProcessor
 import ir.html2apk.app.model.FormState
 import ir.html2apk.app.model.Orientation
@@ -64,6 +68,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun FormScreen(state: UiState, vm: BuildViewModel) {
     val form = state.form
+    val context = LocalContext.current
     val pkgValidation = remember(form.packageName) { Validators.validatePackageName(form.packageName) }
     val canBuild = form.inputUri != null &&
         pkgValidation.isValid &&
@@ -73,14 +78,52 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(vm::onFilePicked) }
 
+    // ---- launcher-icon picking: ask for media read permission first ----
+    // (SAF itself needs no permission; the request exists so the flow behaves
+    //  like every normal gallery app and future direct-gallery paths work.)
+    val iconPermissions = remember {
+        if (Build.VERSION.SDK_INT >= 33) {
+            arrayOf(Manifest.permission.READ_MEDIA_IMAGES)
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
     val iconPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let(vm::onIconPicked) }
+
+    val iconPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.all { it }) {
+            iconPicker.launch(arrayOf("image/*"))
+        } else {
+            // Permission denied — the system file picker still works, so the
+            // icon feature is never blocked, but the user is told what happened.
+            vm.showError(
+                "دسترسی خواندن تصاویر داده نشد — می‌توانید آیکون را از انتخاب‌گر فایل سیستم انتخاب کنید " +
+                    "یا دسترسی را از تنظیمات فعال کنید"
+            )
+            iconPicker.launch(arrayOf("image/*"))
+        }
+    }
+
+    fun launchIconSelection() {
+        val granted = iconPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (granted) {
+            iconPicker.launch(arrayOf("image/*"))
+        } else {
+            iconPermissionLauncher.launch(iconPermissions)
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -180,19 +223,27 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
             )
             Spacer(Modifier.height(10.dp))
 
-            OutlinedTextField(
+            H2ATextField(
                 value = form.appName,
                 onValueChange = { v -> vm.updateForm { it.copy(appName = v) } },
-                label = { Text("نام اپلیکیشن") },
-                singleLine = true,
+                label = "نام اپلیکیشن",
+                placeholder = { Text("همان چیزی که بنویسید، همان می‌شود") },
+                supportingText = {
+                    if (form.appName.isBlank()) {
+                        Text(
+                            "اگر خالی بماند، نام فایل ورودی به‌عنوان نام اپ ثبت می‌شود",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
 
-            OutlinedTextField(
+            H2ATextField(
                 value = form.packageName,
                 onValueChange = { v -> vm.updateForm { it.copy(packageName = v) } },
-                label = { Text("نام پکیج (Package Name)") },
+                label = "نام پکیج (Package Name)",
                 placeholder = { Text("com.example.myapp") },
                 supportingText = {
                     if (form.packageName.isBlank()) {
@@ -210,25 +261,22 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                     }
                 },
                 isError = form.packageName.isNotBlank() && !pkgValidation.isValid,
-                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
+                H2ATextField(
                     value = form.versionCode,
                     onValueChange = { v -> vm.updateForm { it.copy(versionCode = v.filter { c -> c.isDigit() }) } },
-                    label = { Text("کد نسخه") },
-                    singleLine = true,
+                    label = "کد نسخه",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedTextField(
+                H2ATextField(
                     value = form.versionName,
                     onValueChange = { v -> vm.updateForm { it.copy(versionName = v) } },
-                    label = { Text("نام نسخه") },
-                    singleLine = true,
+                    label = "نام نسخه",
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -278,7 +326,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                     }
                 } else {
                     OutlinedButton(
-                        onClick = { iconPicker.launch(arrayOf("image/*")) },
+                        onClick = ::launchIconSelection,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text("انتخاب تصویر آیکون")
@@ -297,19 +345,17 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 "اولین ساخت: کلید RSA-2048 با اعتبار ۳۰ سال ساخته می‌شود. ساخت‌های بعدی از " +
                     "همان کلید استفاده می‌کنند تا بتوانید نسخه‌های قبلی اپ را ارتقا دهید."
             )
-            OutlinedTextField(
+            H2ATextField(
                 value = form.keystorePassword,
                 onValueChange = { v -> vm.updateForm { it.copy(keystorePassword = v) } },
-                label = { Text("گذرواژهٔ Keystore (اختیاری)") },
-                singleLine = true,
+                label = "گذرواژهٔ Keystore (اختیاری)",
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
+            H2ATextField(
                 value = form.keyAlias,
                 onValueChange = { v -> vm.updateForm { it.copy(keyAlias = v) } },
-                label = { Text("نام کلید (Alias)") },
-                singleLine = true,
+                label = "نام کلید (Alias)",
                 modifier = Modifier.fillMaxWidth(),
             )
         }
