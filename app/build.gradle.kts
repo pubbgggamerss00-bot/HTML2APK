@@ -45,6 +45,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // BouncyCastle jars ship an OSGI manifest inside META-INF/versions/9 —
+            // duplicated across bcprov/bcpkix/bcutil and useless on Android
+            excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
     }
 
