@@ -5,11 +5,16 @@ package ir.html2apk.app.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -38,12 +44,9 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,25 +61,26 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import ir.html2apk.app.ui.theme.Emerald
-import ir.html2apk.app.ui.theme.Emerald400
-import ir.html2apk.app.ui.theme.EmeraldChipBg
-import ir.html2apk.app.ui.theme.EmeraldChipText
 import ir.html2apk.app.buildengine.IconProcessor
 import ir.html2apk.app.model.FormState
-import ir.html2apk.app.model.Orientation
-import ir.html2apk.app.util.Validators
+import ir.html2apk.app.ui.theme.Emerald
+import ir.html2apk.app.ui.theme.Emerald400
+import ir.html2apk.app.ui.theme.EmeraldDeep
 import ir.html2apk.app.viewmodel.BuildViewModel
 import ir.html2apk.app.viewmodel.Phase
 import ir.html2apk.app.viewmodel.UiState
+import ir.html2apk.app.util.Validators
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Tab 1 — «ساخت پکیج»: web bundle + app identity + adaptive icon.
+ * Signing & manifest options live in the «تنظیمات SDK» tab (same as v3.4.0).
+ */
 @Composable
-fun FormScreen(state: UiState, vm: BuildViewModel) {
+fun BuildScreen(state: UiState, vm: BuildViewModel) {
     val form = state.form
     val context = LocalContext.current
     val pkgValidation = remember(form.packageName) { Validators.validatePackageName(form.packageName) }
@@ -143,7 +147,6 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
@@ -158,7 +161,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 color = MaterialTheme.colorScheme.primary,
             )
             Text(
-                text = "ساخت اپلیکیشن اندروید از HTML/ZIP — کاملاً آفلاین، روی خود دستگاه",
+                text = "تبدیل کامل آفلاین بسته‌های وب (HTML/ZIP) به APK امضاشده و قابل نصب، مستقیماً روی گوشی",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -172,7 +175,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         // ---- input file ----
         SectionCard {
             Text(
-                text = "۱. فایل ورودی",
+                text = "۱. آرشیو فایل وب (Web Bundle)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -214,7 +217,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                             )
                         }
                         Text(
-                            text = "تغییر",
+                            text = "تغییر فایل",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -238,7 +241,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         // ---- app identity ----
         SectionCard {
             Text(
-                text = "۲. مشخصات اپلیکیشن",
+                text = "۲. مشخصات و متادیتای اپلیکیشن",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -247,7 +250,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
             H2ATextField(
                 value = form.appName,
                 onValueChange = { v -> vm.updateForm { it.copy(appName = v) } },
-                label = "نام اپلیکیشن",
+                label = "نام اپلیکیشن (Application Title)",
                 placeholder = { Text("همان چیزی که بنویسید، همان می‌شود") },
                 supportingText = {
                     val inputName = form.inputName
@@ -273,12 +276,12 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
             H2ATextField(
                 value = form.packageName,
                 onValueChange = { v -> vm.updateForm { it.copy(packageName = v) } },
-                label = "نام پکیج (Package Name)",
+                label = "شناسه یکتا (Package Name / ID)",
                 placeholder = { Text("com.example.myapp") },
                 supportingText = {
                     if (form.packageName.isBlank()) {
                         Text(
-                            "مثال: com.example.myapp — باید دست‌کم دو بخش با نقطه داشته باشد",
+                            "قالب صحیح: com.vendor.appname (حروف کوچک، عدد و _) — دست‌کم دو بخش با نقطه",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else if (pkgValidation.isValid) {
@@ -299,57 +302,25 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                 H2ATextField(
                     value = form.versionCode,
                     onValueChange = { v -> vm.updateForm { it.copy(versionCode = v.filter { c -> c.isDigit() }) } },
-                    label = "کد نسخه",
+                    label = "کد بیلد (Version Code)",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
                 )
                 H2ATextField(
                     value = form.versionName,
                     onValueChange = { v -> vm.updateForm { it.copy(versionName = v) } },
-                    label = "نام نسخه",
+                    label = "ورژن نمایشی (Name)",
                     modifier = Modifier.weight(1f),
                 )
             }
         }
 
-        // ---- orientation ----
-        SectionCard {
-            Text(
-                text = "۳. جهت صفحه",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Orientation.entries.forEach { orientation ->
-                    val selected = form.orientation == orientation
-                    FilterChip(
-                        selected = selected,
-                        onClick = { vm.updateForm { it.copy(orientation = orientation) } },
-                        label = { Text(orientation.label) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            selectedContainerColor = EmeraldChipBg,
-                            selectedLabelColor = EmeraldChipText,
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = selected,
-                            borderColor = MaterialTheme.colorScheme.outlineVariant,
-                            selectedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    )
-                }
-            }
-        }
-
-        // ---- icon ----
+        // ---- adaptive icon ----
         // Two explicit sources: the device gallery (with the media-permission
         // request the user asked for) or any file via the system picker.
         SectionCard {
             Text(
-                text = "۴. آیکون (اختیاری)",
+                text = "۳. آیکون تطبیقی (Adaptive Icon)",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -359,7 +330,7 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                     IconPreview(uri = form.iconUri)
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        text = "آیکون انتخابی (خودکار به مربع بریده و در همهٔ تراکم‌ها جایگزین می‌شود)",
+                        text = "آیکون انتخابی — رندر خودکار در سایزهای mdpi تا xxxhdpi",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
@@ -377,117 +348,23 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
                     onClick = ::launchGallerySelection,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("از گالری")
+                    Text("انتخاب عکس از گالری")
                 }
                 OutlinedButton(
                     onClick = { iconFilePicker.launch(arrayOf("image/*")) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("از فایل")
+                    Text("انتخاب از فایل")
                 }
             }
-            Text(
-                text = "تصویر آیکون را می‌توانید مستقیم از گالری دستگاه یا از فایل‌های گوشی انتخاب کنید",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
-        // ---- signing ----
-        CollapsibleSection(
-            title = "تنظیمات امضا (Keystore)",
-            subtitle = "کلید به‌صورت خودکار روی دستگاه ساخته و ذخیره می‌شود",
-        ) {
-            Spacer(Modifier.height(10.dp))
-            InfoNote(
-                "اولین ساخت: کلید RSA-2048 با اعتبار ۳۰ سال ساخته می‌شود. ساخت‌های بعدی از " +
-                    "همان کلید استفاده می‌کنند تا بتوانید نسخه‌های قبلی اپ را ارتقا دهید."
-            )
-            H2ATextField(
-                value = form.keystorePassword,
-                onValueChange = { v -> vm.updateForm { it.copy(keystorePassword = v) } },
-                label = "گذرواژهٔ Keystore (اختیاری)",
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            H2ATextField(
-                value = form.keyAlias,
-                onValueChange = { v -> vm.updateForm { it.copy(keyAlias = v) } },
-                label = "نام کلید (Alias)",
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        // ---- manifest options ----
-        CollapsibleSection(
-            title = "تنظیمات مانیفست",
-            subtitle = "دسترسی‌ها و سایر پارامترهای اپ خروجی",
-        ) {
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = "دسترسی اینترنت (INTERNET)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "برای اپ‌های آفلاین می‌توانید خاموش کنید تا هیچ دسترسی شبکه‌ای نباشد",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = form.internetPermission,
-                    onCheckedChange = { v -> vm.updateForm { it.copy(internetPermission = v) } },
-                )
-            }
-        }
-
-        // ---- build button ----
-        // The original signature CTA: emerald gradient pill with a soft glow.
-        Button(
-            onClick = vm::startBuild,
+        // ---- build CTA — the live shimmering emerald pill ----
+        ShimmerCtaButton(
             enabled = canBuild,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color.Transparent,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                disabledContainerColor = Color.Transparent,
-            ),
-            contentPadding = PaddingValues(),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (canBuild) {
-                            Modifier.background(
-                                Brush.horizontalGradient(
-                                    listOf(Emerald, Emerald400, Emerald),
-                                ),
-                                RoundedCornerShape(16.dp),
-                            )
-                        } else {
-                            Modifier.background(
-                                MaterialTheme.colorScheme.surfaceVariant,
-                                RoundedCornerShape(16.dp),
-                            )
-                        },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (state.phase == Phase.FAILED)
-                        "تلاش مجدد برای ساخت"
-                    else "ساخت APK امضاشده",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
+            label = if (state.phase == Phase.FAILED) "تلاش مجدد برای ساخت" else "ساخت APK امضاشده",
+            onClick = vm::startBuild,
+        )
 
         if (!canBuild && form.inputUri == null) {
             Text(
@@ -498,10 +375,88 @@ fun FormScreen(state: UiState, vm: BuildViewModel) {
         }
 
         Text(
-            text = "تمام پردازش‌ها (پچ مانیفست، zipalign، امضا) بدون هیچ سروری، روی همین دستگاه انجام می‌شود.",
+            text = "تنظیمات امضا (Keystore)، مانیفست و دسترسی‌ها در تب «تنظیمات SDK» انجام می‌شود. " +
+                "پایپ‌لاین و کنسول زندهٔ ساخت در تب «کامپایلر» دیده می‌شود.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * The signature CTA of the live theme: emerald gradient pill with a light
+ * sweep that travels across it forever while the button is enabled.
+ */
+@Composable
+fun ShimmerCtaButton(
+    enabled: Boolean,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val transition = rememberInfiniteTransition(label = "ctaSweep")
+    val sweep by transition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "sweep",
+    )
+
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            disabledContainerColor = Color.Transparent,
+        ),
+        contentPadding = PaddingValues(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (enabled) {
+                        Modifier.background(
+                            Brush.horizontalGradient(listOf(EmeraldDeep, Emerald, Emerald400, Emerald)),
+                            RoundedCornerShape(16.dp),
+                        )
+                    } else {
+                        Modifier.background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(16.dp),
+                        )
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (enabled) {
+                // travelling light sweep
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    val w = size.width
+                    val bandW = w * 0.35f
+                    val startX = w * sweep - bandW
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            0f to Color.Transparent,
+                            0.5f to Color.White.copy(alpha = 0.22f),
+                            1f to Color.Transparent,
+                            start = androidx.compose.ui.geometry.Offset(startX, 0f),
+                            end = androidx.compose.ui.geometry.Offset(startX + bandW, size.height),
+                        ),
+                    )
+                }
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

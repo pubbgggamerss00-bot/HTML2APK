@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ir.html2apk.app.buildengine.ApkBuildEngine
 import ir.html2apk.app.buildengine.BuildSink
+import ir.html2apk.app.buildengine.KeystoreManager
 import ir.html2apk.app.buildengine.OutputStore
 import ir.html2apk.app.model.BuildRequest
 import ir.html2apk.app.model.BuildStage
@@ -39,6 +40,14 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** APK files produced by the app — shown in the «خروجی‌ها» tab. */
+    private val _outputs = MutableStateFlow<List<OutputStore.SavedOutput>>(emptyList())
+    val outputs: StateFlow<List<OutputStore.SavedOutput>> = _outputs.asStateFlow()
+
+    /** Current on-device signing identity — shown in the «تنظیمات SDK» tab. */
+    private val _keystoreInfo = MutableStateFlow(KeystoreManager.KeystoreStatus(exists = false))
+    val keystoreInfo: StateFlow<KeystoreManager.KeystoreStatus> = _keystoreInfo.asStateFlow()
 
     private var buildJob: Job? = null
 
@@ -132,6 +141,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             keystorePassword = form.keystorePassword,
             keyAlias = form.keyAlias,
             internetPermission = form.internetPermission,
+            usesCleartextTraffic = form.usesCleartextTraffic,
         )
 
         val engine = ApkBuildEngine(getApplication())
@@ -167,6 +177,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val result = engine.build(request, sink)
                 _state.update { it.copy(phase = Phase.SUCCESS, output = result, currentStage = -1) }
+                refreshOutputs()
             } catch (ce: CancellationException) {
                 _state.update {
                     it.copy(
@@ -237,6 +248,15 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
 
     fun installApk() {
         val output = _state.value.output ?: return
+        installOutput(output)
+    }
+
+    fun shareApk() {
+        val output = _state.value.output ?: return
+        shareOutput(output)
+    }
+
+    fun installOutput(output: OutputStore.SavedOutput) {
         try {
             getApplication<Application>().startActivity(
                 OutputStore.installIntent(getApplication(), output)
@@ -251,8 +271,7 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun shareApk() {
-        val output = _state.value.output ?: return
+    fun shareOutput(output: OutputStore.SavedOutput) {
         try {
             getApplication<Application>().startActivity(
                 OutputStore.shareIntent(getApplication(), output)
@@ -269,6 +288,48 @@ class BuildViewModel(application: Application) : AndroidViewModel(application) {
             )
         } catch (e: Exception) {
             _state.update { it.copy(error = "بازکردن پوشهٔ دانلودها ناموفق بود") }
+        }
+    }
+
+    // ---------------- outputs tab ----------------
+
+    fun refreshOutputs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val list = runCatching { OutputStore.listOutputs(getApplication()) }
+                .getOrElse { emptyList() }
+            _outputs.value = list
+        }
+    }
+
+    // ---------------- SDK settings tab ----------------
+
+    fun refreshKeystoreInfo() {
+        val form = _state.value.form
+        viewModelScope.launch(Dispatchers.IO) {
+            _keystoreInfo.value = runCatching {
+                KeystoreManager.describe(getApplication(), form.keystorePassword, form.keyAlias)
+            }.getOrElse {
+                KeystoreManager.KeystoreStatus(exists = false, error = it.message)
+            }
+        }
+    }
+
+    /** Deletes the stored keystore and creates a fresh identity (signature reset). */
+    fun regenerateKeystore() {
+        val form = _state.value.form
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val key = KeystoreManager.regenerate(getApplication(), form.keystorePassword, form.keyAlias)
+                _keystoreInfo.value = KeystoreManager.KeystoreStatus(
+                    exists = true,
+                    alias = key.alias,
+                    sha256 = key.sha256Fingerprint,
+                    algorithm = key.certificate.publicKey.algorithm + "-2048",
+                )
+            } catch (t: Throwable) {
+                showError("بازتولید کلید ناموفق بود: ${t.message ?: t.javaClass.simpleName}")
+                refreshKeystoreInfo()
+            }
         }
     }
 }

@@ -11,10 +11,14 @@ android {
         // Package identity per the original technical spec (com.html2apk.builder);
         // the code namespace (ir.html2apk.app) is internal and irrelevant at install time.
         applicationId = "com.html2apk.builder"
-        minSdk = 26
+        // minSdk 29 = exactly what v3.4.0 shipped. It also makes AGP package the
+        // DEX files UNCOMPRESSED (STORED) in the APK — the packaging profile the
+        // original 40MB build had. Do not lower this silently: it changes the APK
+        // size profile the user expects.
+        minSdk = 29
         targetSdk = 34
-        versionCode = 36
-        versionName = "3.6.0"
+        versionCode = 37
+        versionName = "3.6.1"
     }
 
     buildTypes {
@@ -68,6 +72,10 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    // The full Material icon library (filled/outlined/rounded/sharp/two-tone).
+    // This is what the original 40MB build shipped — it is intentionally kept,
+    // both for the tab UI icons and to preserve the v3.4.0 packaging size.
+    implementation(libs.compose.material.icons.extended)
 
     // APK signing engine
     implementation(libs.apksig)

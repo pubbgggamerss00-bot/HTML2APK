@@ -33,6 +33,7 @@ object AXml {
     // ---- Res_value data types ----------------------------------------------
     const val TYPE_STRING = 0x03
     const val TYPE_INT_DEC = 0x10
+    const val TYPE_BOOL = 0x12
 
     // ---- well known android attribute resource ids -------------------------
     const val ANDROID_LABEL = 0x01010001
@@ -40,6 +41,9 @@ object AXml {
     const val ANDROID_SCREEN_ORIENTATION = 0x0101001E
     const val ANDROID_VERSION_CODE = 0x0101021B
     const val ANDROID_VERSION_NAME = 0x0101021C
+    // android:usesCleartextTraffic — verified against platform-34 framework
+    // resources (aapt2 dump resources android.jar → 0x010104ec)
+    const val ANDROID_USES_CLEARTEXT_TRAFFIC = 0x010104EC
 
     const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
     const val INTERNET_PERMISSION = "android.permission.INTERNET"
@@ -360,6 +364,7 @@ data class ManifestPatch(
     val label: String,
     val screenOrientation: Int,
     val internetPermission: Boolean,
+    val usesCleartextTraffic: Boolean = false,
 )
 
 class ManifestEditor(private val doc: AXml.Document) {
@@ -370,6 +375,7 @@ class ManifestEditor(private val doc: AXml.Document) {
         "screenOrientation" to AXml.ANDROID_SCREEN_ORIENTATION,
         "versionCode" to AXml.ANDROID_VERSION_CODE,
         "versionName" to AXml.ANDROID_VERSION_NAME,
+        "usesCleartextTraffic" to AXml.ANDROID_USES_CLEARTEXT_TRAFFIC,
     )
 
     private fun element(name: String): AXml.Node.StartElement =
@@ -463,6 +469,27 @@ class ManifestEditor(private val doc: AXml.Document) {
         setIntAttr(element("activity"), "screenOrientation", value)
     }
 
+    /** Sets android:usesCleartextTraffic on <application> (boolean typed value). */
+    fun setUsesCleartextTraffic(enabled: Boolean) {
+        val el = element("application")
+        val nsIdx = androidNsIdx()
+        val existing = el.attrs.firstOrNull {
+            it.nsIdx == nsIdx && doc.strings.getOrNull(it.nameIdx) == "usesCleartextTraffic"
+        }
+        // nothing to do when the flag stays off and the template never had it —
+        // keep the patched manifest as close to the template as possible
+        if (!enabled && existing == null) return
+        if (existing != null) {
+            existing.rawValueIdx = -1
+            existing.valueType = AXml.TYPE_BOOL
+            existing.valueData = if (enabled) 1 else 0
+        } else {
+            val nameIdx = androidAttrNameIdxOrCreate("usesCleartextTraffic")
+            el.attrs.add(AXml.Attr(nsIdx, nameIdx, -1, AXml.TYPE_BOOL, if (enabled) 1 else 0))
+            ensureResourceMapCoversPool()
+        }
+    }
+
     /** Removes (or ensures) the INTERNET uses-permission element. */
     fun setInternetPermission(enabled: Boolean) {
         val androidNs = doc.stringIndex(AXml.ANDROID_NS)
@@ -537,6 +564,7 @@ object AXmlEditor {
         editor.setLabel(patch.label)
         editor.setScreenOrientation(patch.screenOrientation)
         editor.setInternetPermission(patch.internetPermission)
+        editor.setUsesCleartextTraffic(patch.usesCleartextTraffic)
         return editor.serialize()
     }
 }

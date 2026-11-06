@@ -19,6 +19,8 @@ import java.io.IOException
 object OutputStore {
 
     const val APK_MIME = "application/vnd.android.package-archive"
+    /** Output subfolder inside Downloads (Android 10+ MediaStore) — same layout v3.4.0 used. */
+    const val OUTPUT_SUBDIR = "Download/HTML2APK"
 
     data class SavedOutput(
         val uri: Uri,
@@ -26,6 +28,7 @@ object OutputStore {
         val sizeBytes: Long,
         val inMediaStore: Boolean,
         val localFile: File?,
+        val dateAdded: Long = 0L,
     )
 
     fun sanitizeFileName(name: String): String {
@@ -47,7 +50,7 @@ object OutputStore {
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
                     put(MediaStore.MediaColumns.MIME_TYPE, APK_MIME)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, OUTPUT_SUBDIR)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
                 val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -63,7 +66,11 @@ object OutputStore {
                 }
                 val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
                 resolver.update(itemUri, done, null, null)
-                return SavedOutput(itemUri, safeName, apkFile.length(), inMediaStore = true, localFile = null)
+                return SavedOutput(
+                    itemUri, safeName, apkFile.length(),
+                    inMediaStore = true, localFile = null,
+                    dateAdded = System.currentTimeMillis() / 1000,
+                )
             } catch (_: Exception) {
                 // Some OEMs / work profiles / restricted profiles reject MediaStore
                 // Downloads inserts. Fall through to the app-private path so the
@@ -73,7 +80,7 @@ object OutputStore {
 
         // Android 8/9 or MediaStore fallback: app-specific external directory
         // (no storage permission required on modern Android).
-        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "Download")
+        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, OUTPUT_SUBDIR)
         if (!dir.exists() && !dir.mkdirs()) {
             throw IOException("ساخت پوشهٔ خروجی ناموفق بود: ${dir.absolutePath}")
         }
@@ -85,7 +92,64 @@ object OutputStore {
             sizeBytes = file.length(),
             inMediaStore = false,
             localFile = file,
+            dateAdded = System.currentTimeMillis() / 1000,
         )
+    }
+
+    /**
+     * Lists every APK this app has produced: MediaStore Download/HTML2APK entries
+     * (Android 10+) plus the app-specific fallback folder. Used by the «خروجی‌ها» tab.
+     */
+    fun listOutputs(context: Context): List<SavedOutput> {
+        val result = mutableListOf<SavedOutput>()
+        if (Build.VERSION.SDK_INT >= 29) {
+            runCatching {
+                val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                context.contentResolver.query(
+                    collection,
+                    arrayOf(
+                        MediaStore.MediaColumns._ID,
+                        MediaStore.MediaColumns.DISPLAY_NAME,
+                        MediaStore.MediaColumns.SIZE,
+                        MediaStore.MediaColumns.DATE_ADDED,
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                    ),
+                    null,
+                    null,
+                    "${MediaStore.MediaColumns.DATE_ADDED} DESC",
+                )?.use { c ->
+                    while (c.moveToNext()) {
+                        val name = c.getString(1) ?: continue
+                        if (!name.endsWith(".apk", ignoreCase = true)) continue
+                        val relPath = (c.getString(4) ?: "").replace('\\', '/')
+                        if (!relPath.startsWith("$OUTPUT_SUBDIR/")) continue
+                        result += SavedOutput(
+                            uri = android.content.ContentUris.withAppendedId(collection, c.getLong(0)),
+                            displayName = name,
+                            sizeBytes = c.getLong(2),
+                            inMediaStore = true,
+                            localFile = null,
+                            dateAdded = c.getLong(3),
+                        )
+                    }
+                }
+            }
+        }
+        runCatching {
+            val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, OUTPUT_SUBDIR)
+            dir.listFiles { f -> f.isFile && f.name.endsWith(".apk", ignoreCase = true) }
+                ?.forEach { f ->
+                    result += SavedOutput(
+                        uri = Uri.fromFile(f),
+                        displayName = f.name,
+                        sizeBytes = f.length(),
+                        inMediaStore = false,
+                        localFile = f,
+                        dateAdded = f.lastModified() / 1000,
+                    )
+                }
+        }
+        return result.distinctBy { it.displayName }.sortedByDescending { it.dateAdded }
     }
 
     /** Copies the produced APK into cacheDir/apk and returns a FileProvider URI. */

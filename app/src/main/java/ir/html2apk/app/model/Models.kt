@@ -2,13 +2,13 @@ package ir.html2apk.app.model
 
 import android.net.Uri
 
-/** The five build stages shown in the progress UI. */
+/** The five build stages shown in the compiler tab (titles mirror the v3.4.0 pipeline). */
 enum class BuildStage(val index: Int, val title: String) {
-    PREPARE(0, "آماده‌سازی و استخراج فایل"),
-    RESOURCES(1, "پردازش منابع و آیکون"),
-    ASSEMBLE(2, "ساخت و بسته‌بندی APK"),
-    SIGN(3, "امضای دیجیتال"),
-    SAVE(4, "ذخیره خروجی");
+    PREPARE(0, "استخراج فایل ورودی و قالب پایه (template.apk)"),
+    RESOURCES(1, "پردازش منابع و آیکون تطبیقی"),
+    ASSEMBLE(2, "بازنویسی باینری AXML، تزریق فایل‌های وب و Zipalign"),
+    SIGN(3, "امضای دیجیتال v1+v2+v3"),
+    SAVE(4, "ذخیرهٔ خروجی در Downloads/HTML2APK");
 
     companion object {
         val COUNT = entries.size
@@ -51,6 +51,7 @@ data class BuildRequest(
     val keystorePassword: String,
     val keyAlias: String,
     val internetPermission: Boolean,
+    val usesCleartextTraffic: Boolean = false,
 )
 
 /** Mutable form state kept by the ViewModel. */
@@ -67,4 +68,5 @@ data class FormState(
     val keystorePassword: String = "",
     val keyAlias: String = "html2apk",
     val internetPermission: Boolean = true,
+    val usesCleartextTraffic: Boolean = false,
 )

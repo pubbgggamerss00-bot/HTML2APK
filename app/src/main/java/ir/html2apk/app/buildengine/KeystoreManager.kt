@@ -37,9 +37,63 @@ object KeystoreManager {
         val createdNew: Boolean,
     )
 
+    /** Read-only keystore status for the SDK-settings screen. */
+    data class KeystoreStatus(
+        val exists: Boolean,
+        val alias: String? = null,
+        val sha256: String? = null,
+        val algorithm: String? = null,
+        val validUntil: String? = null,
+        val error: String? = null,
+    )
+
     private fun ksFile(context: Context): File = File(context.filesDir, KS_FILE_NAME)
 
     fun keystoreExists(context: Context): Boolean = ksFile(context).exists()
+
+    /**
+     * Reads the current signing identity without creating anything.
+     * Used by the SDK-settings screen to show alias / algorithm / validity / fingerprint.
+     */
+    fun describe(context: Context, password: String, alias: String): KeystoreStatus {
+        val file = ksFile(context)
+        if (!file.exists()) return KeystoreStatus(exists = false)
+        return try {
+            val pass = (password.ifBlank { DEFAULT_PASSWORD }).toCharArray()
+            val ks = KeyStore.getInstance("PKCS12")
+            file.inputStream().use { ks.load(it, pass) }
+            val resolved = (alias.ifBlank { DEFAULT_ALIAS }.lowercase())
+                .takeIf { ks.containsAlias(it) }
+                ?: ks.aliases().toList().firstOrNull()
+                ?: return KeystoreStatus(exists = true, error = "keystore موجود است اما کلیدی داخلش نیست")
+            val cert = ks.getCertificate(resolved) as? X509Certificate
+                ?: return KeystoreStatus(exists = true, error = "گواهی قابل خواندن نیست")
+            val df = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US)
+            KeystoreStatus(
+                exists = true,
+                alias = resolved,
+                sha256 = fingerprintOf(cert),
+                algorithm = "${cert.publicKey.algorithm}-2048",
+                validUntil = df.format(cert.notAfter),
+                error = null,
+            )
+        } catch (t: Throwable) {
+            KeystoreStatus(
+                exists = true,
+                error = "خواندن keystore ناموفق بود — اگر رمز دیگری گذاشته‌اید همان را وارد کنید",
+            )
+        }
+    }
+
+    /**
+     * Deletes the stored keystore and generates a completely fresh identity.
+     * After this, previously built APKs can no longer be upgraded (signature
+     * mismatch) — the UI must warn the user before calling this.
+     */
+    fun regenerate(context: Context, password: String, alias: String): SigningKey {
+        ksFile(context).delete()
+        return getOrCreate(context, password, alias)
+    }
 
     fun getOrCreate(context: Context, password: String, alias: String): SigningKey =
         getOrCreate(context.filesDir, password, alias)

@@ -57,6 +57,11 @@ val LogError = Color(0xFFEF4444)
 val LogSuccess = Color(0xFF10B981)
 val LogStage = Color(0xFF38BDF8)
 
+// ---- live theme (تم زنده) aurora colors ----
+val AuroraEmerald = Color(0xFF10B981)
+val AuroraSky = Color(0xFF38BDF8)
+val AuroraLavender = Color(0xFFA8B5FF)
+
 /** The exact Material3 slot mapping the original app used. */
 val EmeraldDarkScheme: ColorScheme = darkColorScheme(
     primary = Primary,
@@ -88,11 +93,14 @@ val EmeraldDarkScheme: ColorScheme = darkColorScheme(
 val Vazirmatn = FontFamily(
     Font(R.font.vazirmatn_regular, FontWeight.Normal),
     Font(R.font.vazirmatn_medium, FontWeight.Medium),
+    Font(R.font.vazirmatn_semibold, FontWeight.SemiBold),
     Font(R.font.vazirmatn_bold, FontWeight.Bold),
 )
 
 val JetBrainsMono = FontFamily(
     Font(R.font.jetbrainsmono_regular, FontWeight.Normal),
+    Font(R.font.jetbrainsmono_medium, FontWeight.Medium),
+    Font(R.font.jetbrainsmono_bold, FontWeight.Bold),
 )
 
 private val BaseTypography = Typography()

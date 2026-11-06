@@ -132,6 +132,7 @@ class ApkBuildEngine(private val context: Context) {
                         label = request.appName,
                         screenOrientation = request.orientation.manifestValue,
                         internetPermission = request.internetPermission,
+                        usesCleartextTraffic = request.usesCleartextTraffic,
                     ),
                 )
             } catch (e: Exception) {
@@ -146,7 +147,8 @@ class ApkBuildEngine(private val context: Context) {
                 LogType.OK,
                 "manifest patched: label=\"${request.appName}\", versionCode=${request.versionCode}, " +
                     "versionName=\"${request.versionName}\", orientation=$orientLabel, " +
-                    "INTERNET=${if (request.internetPermission) "keep" else "remove"}"
+                    "INTERNET=${if (request.internetPermission) "keep" else "remove"}, " +
+                    "cleartext=${if (request.usesCleartextTraffic) "allow" else "deny"}"
             )
 
             val arscBytes = try {
